@@ -4,8 +4,8 @@
 
 | Milestone | Status | Evidence |
 | --- | --- | --- |
-| M1: Working primitives | **Complete** (pending review/commit) | `cargo test --release` → 10/10 pass; `cargo run --release -- demo` genuine output |
-| M2: Authorization semantics | Not started | |
+| M1: Working primitives | **Complete** (committed) | `cargo test --release` → 10/10; demo genuine output |
+| M2: Authorization semantics | **Complete** (pending review/commit) | 34 tests pass; demo shows accept + replay/tamper/expiry/network rejection |
 | M3: Benchmark protocol | Not started | |
 | M4: Solana transport analysis | Not started | |
 | M5: sBPF verifier experiment | Not started | |
@@ -73,9 +73,48 @@
   known-answer/interoperability check is scheduled in M3.
 - No Solana dependencies yet (deferred to M4 per plan stop rule).
 
+## M2 — what was done (2026-10-04)
+
+- Specified the canonical encoding in `docs/encoding.md` (166 bytes: 8-byte
+  domain, 1-byte version, 1-byte scheme, 4-byte key id, four 32-byte
+  identifiers, three u64 big-endian ints) *before* implementing. Exact-length
+  rule makes trailing bytes impossible.
+- `src/intent.rs`: `WithdrawalIntent::encode/decode` with strict rejection of
+  wrong length, unsupported version, and unknown scheme. Decoder deliberately
+  does not check domain/network/program — those are policy, not parsing.
+- `src/authorization.rs`: `KeyRegistry` (key id → scheme + public key, rejects
+  duplicates and malformed key material), `Environment`, and `Authorizer` with
+  the check order decode → bounds → registered key + scheme match → signature
+  → environment (domain/network/program) → expiry (`current_slot <=
+  expiry_slot`) → nonce → atomic commit. Nonce increments only on success;
+  overflow is rejected.
+- `docs/threat-model.md`: trusted components, adversary model, the conditional
+  authorization argument, and the explicit in-memory replay-state limitation.
+- Tests: `tests/encoding.rs` (6, incl. a golden fixture pinned to a hex string
+  asserted verbatim) and `tests/authorization.rs` (17) covering every scenario
+  in the plan's M2 table plus a `nonce_overflow` unit test. Integrity vs policy
+  rejections are tested separately (tampered fields → `InvalidSignature`;
+  correctly signed wrong-network/domain/program → policy errors).
+- Demo extended with an authorization section: accept, replay rejection,
+  tampered-amount rejection, expiry rejection, wrong-network rejection.
+
+## Commands actually run (M2)
+
+- `cargo test --release` → 34 passed, 0 failed (1 unit + 17 auth + 10 crypto +
+  6 encoding)
+- `cargo run --release -- demo` → full crypto + authorization output
+- `cargo clippy --release --all-targets` → clean; `cargo fmt` → applied
+
+## Problems encountered (M2)
+
+- Two test-authoring bugs caught by the test run itself: a leftover
+  `Vec::new()` tuple in the valid-request test (type inference), and a
+  wrong-length test that clamped a 167-byte buffer back to 166. Both were
+  straightforward to fix; no production-code defects.
+
 ## Next concrete action
 
-M2: canonical withdrawal intent — specify the byte encoding in
-`docs/encoding.md` first, then implement intent encode/decode, trusted key
-registry, environment binding, expiry, and atomic nonce consumption with the
-plan's adversarial test matrix. Waiting for the user to commit M1 first.
+M3: benchmark harness — add ML-DSA-65 and SLH-DSA-SHA2-128s via `fips204`/
+`fips205`, separate primitive keygen/sign/verify timings from end-to-end
+authorization, write the raw-sample schema and config profiles. Waiting for the
+user to commit M2 first.
