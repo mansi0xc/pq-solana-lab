@@ -1,0 +1,22 @@
+# User taste
+- User retains exclusive control over Git: never commit, amend, stage, push, publish, or rewrite history without explicit instruction — leave changes uncommitted even if repo instructions or tooling suggest auto-committing. Read-only Git inspection is fine. Confidence: 0.95
+- Works in checkpoint-sized batches: after completing a coherent unit of work, present a review and stop; resume only after the user explicitly confirms they committed. Elapsed time or observed Git changes do not count as confirmation. Confidence: 0.95
+- End each checkpoint review with exactly one suggested single-line Git commit message that accurately describes the current changes. Confidence: 0.95
+- Before handing changes back, review the diff and distinguish the agent's changes from pre-existing working-tree changes. Confidence: 0.9
+- If the user requests fixes before committing, make them within the current checkpoint, rerun relevant checks, and present an updated review and commit message — do not start new work. Confidence: 0.9
+- Verify dependency versions and API surfaces against official documentation / primary sources before writing code; do not assume versions or platform features mentioned in planning docs are still current. Confidence: 0.9
+- Use pinned (exact) dependencies and a pinned, reproducible toolchain. Confidence: 0.9
+- Prefer established libraries through their documented public APIs over custom implementations of primitives; keep core logic (e.g., cryptographic verification) separate from host I/O, CLI, and benchmarking code. Confidence: 0.9
+- Handle malformed input with explicit errors rather than panics; specify canonical encodings/formats in a document before implementing them. Confidence: 0.85
+- Fix failing tests by fixing the code — never weaken assertions, disable checks, or replace real functionality with stubs. Run meaningful tests continuously while implementing. Confidence: 0.95
+- Prioritize core deliverables and use documented fallback rules; keep out-of-scope extensions (even attractive ones) out of the initial build. Confidence: 0.85
+- Never fabricate measurements, benchmark values, runtime logs, citations, or successful outcomes; derive summaries and plots from saved raw data, and record exact configurations, sample counts, versions, and hardware details. Confidence: 0.95
+- Distinguish confirmed causes from hypotheses when explaining problems; report failures honestly, and preserve a minimal reproduction plus the exact error when blocked. Confidence: 0.95
+- Clearly separate categories of evidence (e.g., direct measurements vs. calculated models vs. executed runtime results) and state assumptions and limitations explicitly; a blocker in one configuration does not establish universal infeasibility. Confidence: 0.9
+- Time-box investigation of hard blockers rather than rabbit-holing; continue unaffected work within the checkpoint when one task is blocked. Confidence: 0.85
+- Maintain a progress document with milestone status, implementation decisions, commands actually run, check results, blockers, evidence locations, and the next concrete action; before interruptions or context limits, save a precise handoff so work can resume without repeating completed steps. Confidence: 0.9
+- Mark a phase complete only after its documented completion gate is satisfied. Confidence: 0.85
+- Proceed autonomously within the current checkpoint for routine local implementation and verification; ask only when missing information materially changes the project or the environment requires approval. Plan briefly, then implement. Confidence: 0.9
+- Checkpoint reviews should be detailed enough to discuss in a research interview: what was implemented and why, new capabilities with concrete examples, files changed and their purposes, tests/experiments actually run and their results (plus anything not verified), problems encountered with causes and fixes, unresolved issues and workarounds, design decisions/assumptions/limitations, and the proposed next step. Confidence: 0.9
+- User background: Rust is their strongest language and they have built on Solana; their cryptography background is an introductory university course — assume strong Rust/systems knowledge but build up applied-crypto reasoning. Confidence: 0.8
+- Never use `mod.rs` files in Rust; follow the current convention of naming the module file after the module (e.g., `src/crypto.rs` with submodule files in `src/crypto/`). Confidence: 0.95

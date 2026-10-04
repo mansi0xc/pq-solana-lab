@@ -1,0 +1,49 @@
+{
+  "recorded_at": "2026-10-04",
+  "purpose": "Environment metadata for all host measurements in this project. Host timings describe this implementation on this machine only; they are never converted into Solana compute units.",
+  "host": {
+    "os": "macOS 27.0.1 (build 26A434)",
+    "arch": "aarch64",
+    "cpu": "Apple M4",
+    "kernel": "darwin"
+  },
+  "toolchain": {
+    "rustc": "1.91.1 (ed61e7d7e 2025-11-07)",
+    "cargo": "1.91.1 (ea2d97820 2025-10-10)",
+    "pinned_via": "rust-toolchain.toml channel 1.91.1",
+    "sbpf_toolchain_available": "1.89.0-sbpf-solana-v1.52 (reserved for the M5 experiment)"
+  },
+  "release_profile": {
+    "opt-level": 3,
+    "debug": false,
+    "lto": false,
+    "codegen-units": 16
+  },
+  "direct_dependencies": {
+    "ed25519-dalek": {
+      "version": "3.0.0",
+      "pinned": true,
+      "role": "Ed25519 baseline (RFC 8032), deterministic signing"
+    },
+    "fips204": {
+      "version": "0.4.6",
+      "pinned": true,
+      "features": ["default-rng", "ml-dsa-44"],
+      "role": "ML-DSA-44 (FIPS 204), pure mode, empty context, randomized/hedged signing"
+    },
+    "getrandom": {
+      "version": "0.4.3",
+      "pinned": true,
+      "role": "OS randomness for Ed25519 seed generation"
+    }
+  },
+  "notable_transitive_dependencies": {
+    "fips204 RNG": "rand_core 0.6.4 + getrandom 0.2.17 (internal to fips204 default-rng)",
+    "ed25519-dalek backend": "curve25519-dalek 5.0.0, sha2 0.11.0",
+    "fips204 hashing": "sha3 0.10.9"
+  },
+  "signing_modes": {
+    "ed25519": "RFC 8032 pure Ed25519, deterministic",
+    "ml-dsa-44": "FIPS 204 pure mode, context = empty string, randomized (hedged) signing"
+  }
+}

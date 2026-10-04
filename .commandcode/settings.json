@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(rustc:*)",
+      "Shell(cargo:*)",
+      "Shell(rustup:*)",
+      "Shell(sw_vers:*)",
+      "Shell(sysctl:*)",
+      "Shell(grep:*)",
+      "Shell(sed:*)",
+      "Shell(cargo fmt && cargo clippy --release --all-targets 2>&1 | tail -3 && cargo test --release 2>&1 | grep -E 'test result|running' && cargo run --release -- demo > /dev/null && echo \"demo ok\")",
+      "Shell(git mv 2>/dev/null; mv src/crypto/mod.rs src/crypto.rs && ls src src/crypto)"
+    ],
+    "deny": [],
+    "defaultMode": "default"
+  }
+}
