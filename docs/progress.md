@@ -7,7 +7,7 @@
 | M1: Working primitives | **Complete** (committed) | `cargo test --release` → 10/10; demo genuine output |
 | M2: Authorization semantics | **Complete** (committed) | 46 tests pass (incl. Ed25519 RFC 8032 known-answer, weak-key rejection); demo genuine |
 | M3: Benchmark protocol | **Complete** (pending review/commit) | 4 schemes benchmarked; ML-DSA interop cross-check; 49 tests + all checks green |
-| M4: Solana transport analysis | Not started | |
+| M4: Solana transport analysis | **In progress** — M4.1 direct sizing done | legacy/v0 serialized; ML-DSA/SLH-DSA exceed 1232-byte limit even when key registered |
 | M5: sBPF verifier experiment | Not started | |
 | M6: Results and report | Not started | |
 | M7: Release | Not started | |
@@ -218,8 +218,35 @@ scheduled for M3.
 - ML-DSA-65 keygen ~132 µs (vs ML-DSA-44 ~76 µs), sign and verify slightly
   slower than ML-DSA-44, with 1,952-byte keys and 3,309-byte signatures.
 
+## M4.1 — actual legacy/v0 serialization + direct sizing (2026-10-05)
+
+- Added pinned `solana-sdk =5.0.0` and `bincode =1.3.3`. Verified the current
+  (split-crate) SDK API against its source: `Pubkey` is now an alias for
+  `Address`; legacy `Transaction::new_signed_with_payer`, v0
+  `Message::try_compile` + `VersionedTransaction::try_new`; the SDK also
+  exposes a `VersionedMessage::V1` variant (used in M4.2).
+- `src/transport.rs`: builds and serializes a real legacy and v0 transaction
+  per scheme × key placement, carrying the intent (166 B) + signature in
+  instruction data (inline adds the public key). `cargo run --release --
+  transport` prints the table and writes `results/transport.json`.
+- `tests/transport.rs` (5 tests): all 16 rows are `serialized` evidence;
+  Ed25519 inline fits; ML-DSA-44 exceeds 1,232 even when registered;
+  registration removes exactly the public-key bytes; v0 ≈ legacy + version
+  prefix.
+- `docs/transport.md`: measured results + assumptions (fee payer, key
+  registration, account lifecycle, v1 deferred).
+
+### M4.1 measured result (solana-sdk 5.0.0, bincode)
+
+Every post-quantum scheme's authorization payload exceeds the 1,232-byte
+legacy/v0 packet budget even with the key registered: ML-DSA-44 = 2,758 bytes,
+ML-DSA-65 = 3,647, SLH-DSA-SHA2-128s = 8,194 (registered). Ed25519 = 402
+bytes. Registration saves exactly the public-key bytes (e.g. 1,312 for
+ML-DSA-44) but does not address signature size.
+
 ## Next concrete action
 
-M4: Solana transport analysis — add the `solana-sdk` dependency, serialize
-legacy/v0 example transactions carrying the authorization material, and compute
-direct-versus-staged payload sizing. Waiting for the user to commit M3.2 first.
+M4.2: v1 serialization (the SDK exposes a v1 message), staged-upload chunking
+(initialize/append/reference with per-format chunk sizes), and the
+direct-versus-staged comparison table. Waiting for the user to commit M4.1
+first.

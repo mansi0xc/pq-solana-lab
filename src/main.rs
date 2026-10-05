@@ -10,6 +10,7 @@ fn main() {
     match args.get(1).map(String::as_str) {
         Some("demo") => run_demo(),
         Some("benchmark") => run_benchmark(&args[2..]),
+        Some("transport") => run_transport(),
         Some(other) => {
             eprintln!("unknown command: {other}");
             eprintln!("usage: pq-solana-lab demo | benchmark --config <path>");
@@ -20,6 +21,31 @@ fn main() {
             std::process::exit(2);
         }
     }
+}
+
+fn run_transport() {
+    let rows = pq_solana_lab::transport::analyze();
+    let path = "results/transport.json";
+    std::fs::write(
+        path,
+        serde_json::to_string_pretty(&rows).expect("serialize transport"),
+    )
+    .unwrap_or_else(|e| panic!("write {path}: {e}"));
+    println!("scheme              format  placement  sig      pk      total   limit  headroom");
+    for r in &rows {
+        println!(
+            "{:<18} {:<7} {:<10} {:>7} {:>7} {:>7} {:>6} {:>8}",
+            r.scheme,
+            r.format,
+            r.key_placement,
+            r.signature_bytes,
+            r.public_key_bytes,
+            r.total_bytes,
+            r.applicable_limit,
+            r.headroom
+        );
+    }
+    println!("wrote {path}");
 }
 
 fn run_benchmark(args: &[String]) {

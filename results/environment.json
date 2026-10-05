@@ -28,13 +28,20 @@
     "fips204": {
       "version": "0.4.6",
       "pinned": true,
-      "features": ["default-rng", "ml-dsa-44", "ml-dsa-65"],
+      "features": [
+        "default-rng",
+        "ml-dsa-44",
+        "ml-dsa-65"
+      ],
       "role": "ML-DSA-44 and ML-DSA-65 (FIPS 204), pure mode, empty context, randomized/hedged signing"
     },
     "fips205": {
       "version": "0.4.1",
       "pinned": true,
-      "features": ["default-rng", "slh_dsa_sha2_128s"],
+      "features": [
+        "default-rng",
+        "slh_dsa_sha2_128s"
+      ],
       "role": "SLH-DSA-SHA2-128s (FIPS 205), pure mode, empty context, hedged signing"
     },
     "getrandom": {
@@ -51,6 +58,16 @@
       "version": "1.0.151",
       "pinned": true,
       "role": "benchmark config/result serialization"
+    },
+    "solana-sdk": {
+      "version": "5.0.0",
+      "pinned": true,
+      "role": "actual transaction serialization for the M4 transport analysis"
+    },
+    "bincode": {
+      "version": "1.3.3",
+      "pinned": true,
+      "role": "classic Solana wire serialization (1232-byte packet limit)"
     }
   },
   "dev_dependencies": {
@@ -64,7 +81,8 @@
     "fips204 RNG": "rand_core 0.6.4 + getrandom 0.2.17 (internal to fips204 default-rng)",
     "fips205 RNG": "rand_core + getrandom (internal to fips205 default-rng)",
     "ed25519-dalek backend": "curve25519-dalek 5.0.0, sha2 0.11.0",
-    "fips204 hashing": "sha3 0.10.9"
+    "fips204 hashing": "sha3 0.10.9",
+    "solana split crates": "solana-transaction 5.1.0, solana-message 5.1.0, solana-program 5.1.0, solana-pubkey 4.2.0 (Pubkey is an alias for Address)"
   },
   "signing_modes": {
     "ed25519": "RFC 8032 pure Ed25519, deterministic",
