@@ -9,7 +9,7 @@
 | M3: Benchmark protocol | **Complete** (pending review/commit) | 4 schemes benchmarked; ML-DSA interop cross-check; 49 tests + all checks green |
 | M4: Solana transport analysis | **Complete** (pending review/commit) | legacy/v0/v1 serialized; direct + staged sizing; ML-DSA-44 fits v1, larger schemes don't |
 | M5: sBPF verifier experiment | **Complete** (blocker documented) | fips204 ML-DSA-44 compiles for sBF but fails the 4,096-byte stack-frame check (`verify_internal` ~62 KB) |
-| M6: Results and report | Not started | |
+| M6: Results and report | **Complete** (pending review/commit) | full profile run (94,546 raw rows); 3 plots; report + AI-usage doc written |
 | M7: Release | Not started | |
 
 ## M1 — what was done (2026-10-04)
@@ -286,9 +286,25 @@ ML-DSA-44) but does not address signature size.
   large buffers (or otherwise reduces per-function stack) may differ, and no
   universal infeasibility is inferred.
 
+## M6 — results and report (2026-10-06)
+
+- Ran the frozen `full` profile (4 schemes, 1,000 samples/case, 60 s/case
+  budget, warm-up 20): 94,546 raw rows + 100 summary rows, at
+  `results/raw/full.csv` and `results/summaries/full.csv`, with metadata in
+  `results/full.json`.
+- `scripts/plot_results.py` generates three plots from raw data (median
+  recomputed from raw rows) into `results/plots/`: verification latency,
+  key/signature bytes, transport headroom.
+- `docs/report.md`: four-to-six-page report — finding first, then related work,
+  design, methodology, results, conditional security argument, limitations,
+  future work, attribution. `docs/ai-usage.md` records AI assistance.
+- Report numbers are traced to the raw/summary files; the threshold-ML-DSA
+  paper (ePrint 2026/013) is cited from its abstract, and the limitation that a
+  specific numbered theorem from its proof was not traced is stated explicitly.
+
 ## Next concrete action
 
-M6: analyze results and write the research report — run the frozen full
-benchmark profile, derive the three plots from raw data, write the
-four-to-six-page report, and the conditional authorization argument. Waiting
-for the user to commit M5 first.
+M7: reviewable release — README in reviewer order, clean-checkout validation
+(fmt, clippy, test, rustdoc, demo, quick benchmark, transport), CI for
+correctness + a smoke run, and demonstration materials. Waiting for the user to
+commit M6 first.
