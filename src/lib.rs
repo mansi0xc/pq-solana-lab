@@ -2,5 +2,6 @@
 //! Solana. See `docs/research-question.md` for scope.
 
 pub mod authorization;
+pub mod bench;
 pub mod crypto;
 pub mod intent;

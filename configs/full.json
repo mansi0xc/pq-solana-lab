@@ -1,0 +1,11 @@
+{
+  "run_id": "full",
+  "warmup": 100,
+  "samples": 1000,
+  "budget_seconds": 60,
+  "min_samples": 200,
+  "message_lengths": [32, 166, 1024],
+  "schemes": ["ed25519", "ml-dsa-44"],
+  "modes": ["prepared", "byte"],
+  "input_classes": ["valid", "corrupted", "invalid_len"]
+}

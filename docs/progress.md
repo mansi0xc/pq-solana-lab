@@ -5,8 +5,8 @@
 | Milestone | Status | Evidence |
 | --- | --- | --- |
 | M1: Working primitives | **Complete** (committed) | `cargo test --release` → 10/10; demo genuine output |
-| M2: Authorization semantics | **Complete** (pending review/commit) | 46 tests pass (incl. Ed25519 RFC 8032 known-answer, weak-key rejection); demo genuine |
-| M3: Benchmark protocol | Not started | |
+| M2: Authorization semantics | **Complete** (committed) | 46 tests pass (incl. Ed25519 RFC 8032 known-answer, weak-key rejection); demo genuine |
+| M3: Benchmark protocol | **In progress** — M3.1 harness done | quick profile ran: 15,000 raw rows + 50 summaries, all checks green |
 | M4: Solana transport analysis | Not started | |
 | M5: sBPF verifier experiment | Not started | |
 | M6: Results and report | Not started | |
@@ -162,10 +162,37 @@ scheduled for M3.
 - `cargo run --release --locked -- demo` → genuine output
 - `git diff --check` → clean
 
+## M3.1 — benchmark harness (2026-10-05)
+
+- Added pinned `serde =1.0.229` (derive) and `serde_json =1.0.151` for config
+  and result/metadata serialization.
+- `src/bench.rs`: config schema, timing engine (warm-up, per-case time budget,
+  actual sample counts), raw-sample and summary schemas, and summary
+  statistics (median, Q1/Q3 via linear-interpolation quantile; p95 only when
+  `sample_count >= min_samples`). Valid fixtures are produced and checked once
+  *outside* the timed loop; keys/messages are prepared before timing.
+- `src/main.rs`: `benchmark --config <path>` subcommand writes
+  `results/raw/<run_id>.csv`, `results/summaries/<run_id>.csv`, and
+  `results/<run_id>.json` (config + `git rev-parse HEAD` + dirty status).
+- `configs/quick.json`, `configs/full.json`; `docs/methodology.md` documents
+  measurement boundaries (prepared vs byte vs keygen), sampling policy, key
+  reuse, signing modes, input classes, and sub-resolution-timing caveats.
+- Pilot run (`quick`): 2 schemes × {keygen, sign, verify} × {32, 166, 1024}
+  byte messages × {prepared, byte} modes × {valid, corrupted, invalid_len}
+  classes → 15,000 raw rows, 50 summary rows. Genuine data at
+  `results/raw/quick.csv` and `results/summaries/quick.csv`.
+
+### Pilot observations (host, Apple M4; not conclusions)
+
+- ML-DSA-44 is roughly 6–9× slower to sign and ~2× slower to verify than
+  Ed25519 on this host (e.g. sign ~126–177 µs vs ~10–18 µs; verify ~40–50 µs
+  vs ~19–21 µs). These are host wall-clock observations only.
+- `byte`-mode `invalid_len` still pays public-key reconstruction before the
+  length check, while `prepared`-mode rejects wrong-length input at ~0 ns
+  (below timer resolution); documented in `docs/methodology.md`.
+
 ## Next concrete action
 
-M3: benchmark harness — add ML-DSA-65 and SLH-DSA-SHA2-128s via `fips204`/
-`fips205`, use the prepared-key path to separate primitive from byte-adapter
-timings, write the raw-sample schema and config profiles, and add the
-independent ML-DSA interop cross-check. Waiting for the user to commit this
-correction batch first.
+M3.2: add ML-DSA-65 and SLH-DSA-SHA2-128s adapters, run the frozen `full`
+profile across four schemes, and add the independent ML-DSA interop
+cross-check. Waiting for the user to commit M3.1 first.
