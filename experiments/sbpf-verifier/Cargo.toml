@@ -1,0 +1,18 @@
+[package]
+name = "sbpf-verifier"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+solana-program = "=5.1.0"
+# FIPS 204 ML-DSA-44, verification only (no RNG: keygen is unavailable, which
+# is what a verifier-on-chain needs).
+fips204 = { version = "=0.4.6", default-features = false, features = ["ml-dsa-44"] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1

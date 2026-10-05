@@ -1,0 +1,63 @@
+Error: Function _ZN4core5array11try_from_fn17h3834e62b306cb00eE Stack offset of 9216 exceeded max offset of 4096 by 5120 bytes, please minimize large stack variables. Estimated function frame size: 9216 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
+
+Error: Function _ZN4core5array11try_from_fn17h7b6b0b5709cfbd0eE Stack offset of 27256 exceeded max offset of 4096 by 23160 bytes, please minimize large stack variables. Estimated function frame size: 27328 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
+
+Error: Function _ZN7fips2047helpers11mat_vec_mul17h438044d36bedd0b7E Stack offset of 8192 exceeded max offset of 4096 by 4096 bytes, please minimize large stack variables. Estimated function frame size: 8256 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
+
+Error: Function _ZN7fips2048high_low11power2round17hf5d97df60a4d0f8fE Stack offset of 13320 exceeded max offset of 4096 by 9224 bytes, please minimize large stack variables. Estimated function frame size: 13376 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
+
+Error: Function _ZN7fips2046ml_dsa13sign_internal17hef8930eeb98c35f9E Stack offset of 69008 exceeded max offset of 4096 by 64912 bytes, please minimize large stack variables. Estimated function frame size: 69184 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
+
+Error: Function _ZN7fips2046ml_dsa15verify_internal17h20cfd15c478f2ec2E Stack offset of 61912 exceeded max offset of 4096 by 57816 bytes, please minimize large stack variables. Estimated function frame size: 62016 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
+
+Error: Function _ZN7fips2043ntt3ntt17hd6a7218f9a031348E Stack offset of 8128 exceeded max offset of 4096 by 4032 bytes, please minimize large stack variables. Estimated function frame size: 8320 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
+
+Error: Function _ZN7fips2043ntt7inv_ntt17h392f30ba0042fa33E Stack offset of 8232 exceeded max offset of 4096 by 4136 bytes, please minimize large stack variables. Estimated function frame size: 8256 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
+
+Error: Function _ZN66_$LT$fips204..ml_dsa_44..KG$u20$as$u20$fips204..traits..KeyGen$GT$16keygen_from_seed17h58e3833ea41a8f7aE Stack offset of 27776 exceeded max offset of 4096 by 23680 bytes, please minimize large stack variables. Estimated function frame size: 65984 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
+
+Error: Function _ZN7fips2049ml_dsa_44105_$LT$impl$u20$fips204..traits..Signer$u20$for$u20$fips204..types..PrivateKey$LT$4_usize$C$4_usize$GT$$GT$14get_public_key17hd40c15e8fcc3f706E Stack offset of 81936 exceeded max offset of 4096 by 77840 bytes, please minimize large stack variables. Estimated function frame size: 81984 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
+
+Error: Function _ZN7fips2049ml_dsa_44105_$LT$impl$u20$fips204..traits..SerDes$u20$for$u20$fips204..types..PrivateKey$LT$4_usize$C$4_usize$GT$$GT$14try_from_bytes17h632520a5ae2b51d0E Stack offset of 32920 exceeded max offset of 4096 by 28824 bytes, please minimize large stack variables. Estimated function frame size: 32960 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
+
+Error: Function _ZN7fips2049ml_dsa_44105_$LT$impl$u20$fips204..traits..SerDes$u20$for$u20$fips204..types..PrivateKey$LT$4_usize$C$4_usize$GT$$GT$10into_bytes17h768f8ba1d78c915eE Stack offset of 32792 exceeded max offset of 4096 by 28696 bytes, please minimize large stack variables. Estimated function frame size: 32896 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
+
+Error: Function _ZN7fips2049ml_dsa_44104_$LT$impl$u20$fips204..traits..SerDes$u20$for$u20$fips204..types..PublicKey$LT$4_usize$C$4_usize$GT$$GT$14try_from_bytes17h5fbe9623a9bb61dfE Stack offset of 24072 exceeded max offset of 4096 by 19976 bytes, please minimize large stack variables. Estimated function frame size: 24128 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
+
+Error: Function _ZN7fips2049ml_dsa_44104_$LT$impl$u20$fips204..traits..SerDes$u20$for$u20$fips204..types..PublicKey$LT$4_usize$C$4_usize$GT$$GT$10into_bytes17h5aa649521c1f7dcfE Stack offset of 20488 exceeded max offset of 4096 by 16392 bytes, please minimize large stack variables. Estimated function frame size: 20544 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
+
+warning: unexpected `cfg` condition value: `custom-heap`
+ --> src/lib.rs:8:1
+  |
+8 | entrypoint!(process_instruction);
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: no expected values for `feature`
+  = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+  = help: try referring to `$crate::custom_heap_default` crate for guidance on how handle this unexpected cfg
+  = help: the macro `$crate::custom_heap_default` may come from an old version of the `solana_program_entrypoint` crate, try updating your dependency with `cargo update -p solana_program_entrypoint`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: `#[warn(unexpected_cfgs)]` on by default
+  = note: this warning originates in the macro `$crate::custom_heap_default` which comes from the expansion of the macro `entrypoint` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `custom-panic`
+ --> src/lib.rs:8:1
+  |
+8 | entrypoint!(process_instruction);
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: no expected values for `feature`
+  = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+  = help: try referring to `$crate::custom_panic_default` crate for guidance on how handle this unexpected cfg
+  = help: the macro `$crate::custom_panic_default` may come from an old version of the `solana_program_entrypoint` crate, try updating your dependency with `cargo update -p solana_program_entrypoint`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: this warning originates in the macro `$crate::custom_panic_default` which comes from the expansion of the macro `entrypoint` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+Error: Function entrypoint Stack offset of 4160 exceeded max offset of 4096 by 64 bytes, please minimize large stack variables. Estimated function frame size: 10880 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
+
+Error: A function call in method entrypoint overwrites values in the frame. Please, decrease stack usage or remove parameters from the call. The function call may cause undefined behavior during execution.
+
+Error: A function call in method entrypoint overwrites values in the frame. Please, decrease stack usage or remove parameters from the call. The function call may cause undefined behavior during execution.
+
+warning: `sbpf-verifier` (lib) generated 2 warnings
+    Finished `release` profile [optimized] target(s) in 0.21s

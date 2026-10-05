@@ -8,7 +8,7 @@
 | M2: Authorization semantics | **Complete** (committed) | 46 tests pass (incl. Ed25519 RFC 8032 known-answer, weak-key rejection); demo genuine |
 | M3: Benchmark protocol | **Complete** (pending review/commit) | 4 schemes benchmarked; ML-DSA interop cross-check; 49 tests + all checks green |
 | M4: Solana transport analysis | **Complete** (pending review/commit) | legacy/v0/v1 serialized; direct + staged sizing; ML-DSA-44 fits v1, larger schemes don't |
-| M5: sBPF verifier experiment | Not started | |
+| M5: sBPF verifier experiment | **Complete** (blocker documented) | fips204 ML-DSA-44 compiles for sBF but fails the 4,096-byte stack-frame check (`verify_internal` ~62 KB) |
 | M6: Results and report | Not started | |
 | M7: Release | Not started | |
 
@@ -266,9 +266,29 @@ ML-DSA-44) but does not address signature size.
   fit but raises total transport bytes (repeated per-transaction overhead) and
   introduces on-chain state; it does not reduce verification cost.
 
+## M5 — sBPF verifier experiment (2026-10-06, time-boxed)
+
+- Confirmed the toolchain works: a minimal no-op program builds to a valid
+  11,336-byte sBPF ELF with `solana-cargo-build-sbf 3.1.10` / platform-tools
+  v1.52 / rustc 1.89.0.
+- Built a verification-only ML-DSA-44 program (`experiments/sbpf-verifier/`,
+  `fips204` 0.4.6 with `default-features = false, features = ["ml-dsa-44"]`,
+  no RNG). It **compiles** for sBF, but the sBPF ELF checker rejects it:
+  several functions exceed the 4,096-byte stack-frame limit — `verify_internal`
+  ~62 KB, `PublicKey::try_from_bytes` ~24 KB, `ntt::ntt` ~8.3 KB, `entrypoint`
+  ~10.9 KB. Full log: `experiments/sbpf-verifier/build.log`.
+- **Outcome: reproducible stack-frame blocker (before execution).** This is a
+  stack-frame-size limitation, not a build failure, not a heap failure, and not
+  compute-budget exhaustion. No execution occurred, so no compute-unit
+  measurements exist or are claimed.
+- Documented in `docs/solana-feasibility.md`, which also states the scope
+  limit: this is `fips204` 0.4.6-specific; a verifier that heap-allocates its
+  large buffers (or otherwise reduces per-function stack) may differ, and no
+  universal infeasibility is inferred.
+
 ## Next concrete action
 
-M5: bounded sBPF verifier experiment — first confirm a minimal Solana program
-builds/executes with the installed `1.89.0-sbpf-solana-v1.52` toolchain, then
-attempt verification-only ML-DSA-44 code with a host-validated fixture,
-time-boxed to four hours. Waiting for the user to commit M4.2 first.
+M6: analyze results and write the research report — run the frozen full
+benchmark profile, derive the three plots from raw data, write the
+four-to-six-page report, and the conditional authorization argument. Waiting
+for the user to commit M5 first.
