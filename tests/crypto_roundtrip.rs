@@ -168,6 +168,12 @@ fn published_sizes_match_the_standards() {
     assert_eq!(Scheme::MlDsa44.public_key_len(), 1312);
     assert_eq!(Scheme::MlDsa44.secret_key_len(), 2560);
     assert_eq!(Scheme::MlDsa44.signature_len(), 2420);
+    assert_eq!(Scheme::MlDsa65.public_key_len(), 1952);
+    assert_eq!(Scheme::MlDsa65.secret_key_len(), 4032);
+    assert_eq!(Scheme::MlDsa65.signature_len(), 3309);
+    assert_eq!(Scheme::SlhDsaSha2128s.public_key_len(), 32);
+    assert_eq!(Scheme::SlhDsaSha2128s.secret_key_len(), 64);
+    assert_eq!(Scheme::SlhDsaSha2128s.signature_len(), 7856);
 }
 
 #[test]

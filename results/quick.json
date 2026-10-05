@@ -1,7 +1,7 @@
 {
   "arch": "aarch64",
   "config": {
-    "budget_seconds": 60,
+    "budget_seconds": 15,
     "input_classes": [
       "valid",
       "corrupted",
@@ -21,14 +21,16 @@
     "samples": 300,
     "schemes": [
       "ed25519",
-      "ml-dsa-44"
+      "ml-dsa-44",
+      "ml-dsa-65",
+      "slh-dsa-sha2-128s"
     ],
-    "warmup": 30
+    "warmup": 10
   },
-  "git_revision": "1999ddc181bf4adf9c4dbae17806197df940dd99",
+  "git_revision": "97a682ce6e4bc549e822781e204b5617a793bae8",
   "note": "Host timings describe one implementation on one machine; not a universal ranking, not constant-time evidence, never converted to Solana compute units.",
   "os": "macos",
-  "recorded_unix_s": 1791182814,
+  "recorded_unix_s": 1791211247,
   "run_id": "quick",
   "working_tree_dirty": true
 }

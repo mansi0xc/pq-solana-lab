@@ -29,6 +29,9 @@ impl Setup {
         match scheme {
             Scheme::Ed25519 => self.ed.clone(),
             Scheme::MlDsa44 => self.ml.clone(),
+            other => panic!(
+                "authorization test setup only registers ed25519 and ml-dsa-44, got {other:?}"
+            ),
         }
     }
 }

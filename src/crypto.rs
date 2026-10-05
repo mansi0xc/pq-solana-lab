@@ -25,8 +25,8 @@
 //! The only difference between [`Scheme::verify`] and
 //! [`Scheme::verify_strict`] is the Ed25519 backend mode: `verify_strict`
 //! additionally rejects weak (low-order) public keys and signatures with
-//! small-order components. ML-DSA has no such distinction, so the two paths
-//! are identical there. Authorization uses [`Scheme::verify_strict`].
+//! small-order components. ML-DSA and SLH-DSA have no such distinction, so the
+//! two paths are identical there. Authorization uses [`Scheme::verify_strict`].
 //!
 //! # Prepared keys
 //!
@@ -37,7 +37,9 @@
 //! measurements that want to exclude reconstruction and allocation.
 
 pub mod ed25519;
-pub mod ml_dsa;
+pub mod ml_dsa_44;
+pub mod ml_dsa_65;
+pub mod slh_dsa;
 
 use std::fmt;
 
@@ -52,10 +54,19 @@ pub enum Scheme {
     Ed25519 = 1,
     /// ML-DSA-44 (FIPS 204), claimed NIST security strength category 2.
     MlDsa44 = 2,
+    /// ML-DSA-65 (FIPS 204), claimed NIST security strength category 3.
+    MlDsa65 = 3,
+    /// SLH-DSA-SHA2-128s (FIPS 205), claimed NIST security strength category 1.
+    SlhDsaSha2128s = 4,
 }
 
 impl Scheme {
-    pub const ALL: [Scheme; 2] = [Scheme::Ed25519, Scheme::MlDsa44];
+    pub const ALL: [Scheme; 4] = [
+        Scheme::Ed25519,
+        Scheme::MlDsa44,
+        Scheme::MlDsa65,
+        Scheme::SlhDsaSha2128s,
+    ];
 
     pub fn id(self) -> u8 {
         self as u8
@@ -65,6 +76,8 @@ impl Scheme {
         match id {
             1 => Ok(Scheme::Ed25519),
             2 => Ok(Scheme::MlDsa44),
+            3 => Ok(Scheme::MlDsa65),
+            4 => Ok(Scheme::SlhDsaSha2128s),
             other => Err(CryptoError::UnknownScheme(other)),
         }
     }
@@ -73,6 +86,8 @@ impl Scheme {
         match self {
             Scheme::Ed25519 => "ed25519",
             Scheme::MlDsa44 => "ml-dsa-44",
+            Scheme::MlDsa65 => "ml-dsa-65",
+            Scheme::SlhDsaSha2128s => "slh-dsa-sha2-128s",
         }
     }
 
@@ -82,27 +97,35 @@ impl Scheme {
         match self {
             Scheme::Ed25519 => "classical (~128-bit classical security)",
             Scheme::MlDsa44 => "NIST category 2 (post-quantum)",
+            Scheme::MlDsa65 => "NIST category 3 (post-quantum)",
+            Scheme::SlhDsaSha2128s => "NIST category 1 (post-quantum)",
         }
     }
 
     pub fn public_key_len(self) -> usize {
         match self {
             Scheme::Ed25519 => ed25519::PUBLIC_KEY_LEN,
-            Scheme::MlDsa44 => ml_dsa::PUBLIC_KEY_LEN,
+            Scheme::MlDsa44 => ml_dsa_44::PUBLIC_KEY_LEN,
+            Scheme::MlDsa65 => ml_dsa_65::PUBLIC_KEY_LEN,
+            Scheme::SlhDsaSha2128s => slh_dsa::PUBLIC_KEY_LEN,
         }
     }
 
     pub fn secret_key_len(self) -> usize {
         match self {
             Scheme::Ed25519 => ed25519::SECRET_KEY_LEN,
-            Scheme::MlDsa44 => ml_dsa::SECRET_KEY_LEN,
+            Scheme::MlDsa44 => ml_dsa_44::SECRET_KEY_LEN,
+            Scheme::MlDsa65 => ml_dsa_65::SECRET_KEY_LEN,
+            Scheme::SlhDsaSha2128s => slh_dsa::SECRET_KEY_LEN,
         }
     }
 
     pub fn signature_len(self) -> usize {
         match self {
             Scheme::Ed25519 => ed25519::SIGNATURE_LEN,
-            Scheme::MlDsa44 => ml_dsa::SIGNATURE_LEN,
+            Scheme::MlDsa44 => ml_dsa_44::SIGNATURE_LEN,
+            Scheme::MlDsa65 => ml_dsa_65::SIGNATURE_LEN,
+            Scheme::SlhDsaSha2128s => slh_dsa::SIGNATURE_LEN,
         }
     }
 
@@ -110,18 +133,19 @@ impl Scheme {
     pub fn keygen(self) -> Result<KeyPair, CryptoError> {
         match self {
             Scheme::Ed25519 => ed25519::keygen(),
-            Scheme::MlDsa44 => ml_dsa::keygen(),
+            Scheme::MlDsa44 => ml_dsa_44::keygen(),
+            Scheme::MlDsa65 => ml_dsa_65::keygen(),
+            Scheme::SlhDsaSha2128s => slh_dsa::keygen(),
         }
     }
 
     /// Sign `msg` with the secret key bytes of this scheme (byte path).
-    ///
-    /// ML-DSA is used in pure mode with an empty context string and
-    /// randomized (hedged) signing; Ed25519 is deterministic RFC 8032.
     pub fn sign(self, secret_key: &[u8], msg: &[u8]) -> Result<Vec<u8>, CryptoError> {
         match self {
             Scheme::Ed25519 => ed25519::sign(secret_key, msg),
-            Scheme::MlDsa44 => ml_dsa::sign(secret_key, msg),
+            Scheme::MlDsa44 => ml_dsa_44::sign(secret_key, msg),
+            Scheme::MlDsa65 => ml_dsa_65::sign(secret_key, msg),
+            Scheme::SlhDsaSha2128s => slh_dsa::sign(secret_key, msg),
         }
     }
 
@@ -130,13 +154,15 @@ impl Scheme {
     pub fn verify(self, public_key: &[u8], msg: &[u8], sig: &[u8]) -> Result<bool, CryptoError> {
         match self {
             Scheme::Ed25519 => ed25519::verify(public_key, msg, sig),
-            Scheme::MlDsa44 => ml_dsa::verify(public_key, msg, sig),
+            Scheme::MlDsa44 => ml_dsa_44::verify(public_key, msg, sig),
+            Scheme::MlDsa65 => ml_dsa_65::verify(public_key, msg, sig),
+            Scheme::SlhDsaSha2128s => slh_dsa::verify(public_key, msg, sig),
         }
     }
 
     /// Strict verification (byte path). For Ed25519 this additionally rejects
-    /// weak public keys and small-order signature components; ML-DSA is
-    /// unchanged. The authorization path uses this.
+    /// weak public keys and small-order signature components; the other
+    /// schemes are unchanged. The authorization path uses this.
     pub fn verify_strict(
         self,
         public_key: &[u8],
@@ -145,7 +171,9 @@ impl Scheme {
     ) -> Result<bool, CryptoError> {
         match self {
             Scheme::Ed25519 => ed25519::verify_strict(public_key, msg, sig),
-            Scheme::MlDsa44 => ml_dsa::verify_strict(public_key, msg, sig),
+            Scheme::MlDsa44 => ml_dsa_44::verify_strict(public_key, msg, sig),
+            Scheme::MlDsa65 => ml_dsa_65::verify_strict(public_key, msg, sig),
+            Scheme::SlhDsaSha2128s => slh_dsa::verify_strict(public_key, msg, sig),
         }
     }
 
@@ -153,12 +181,15 @@ impl Scheme {
     ///
     /// Ed25519 rejects both non-decompressible encodings
     /// ([`CryptoError::MalformedEncoding`]) and weak (low-order) keys
-    /// ([`CryptoError::WeakKey`]). ML-DSA validates that the fixed-size key
-    /// deserializes; FIPS 204 defines no analogous "weak public key" concept.
+    /// ([`CryptoError::WeakKey`]). ML-DSA and SLH-DSA validate that the
+    /// fixed-size key deserializes; FIPS 204/205 define no analogous "weak
+    /// public key" concept.
     pub fn validate_public_key(self, public_key: &[u8]) -> Result<(), CryptoError> {
         match self {
             Scheme::Ed25519 => ed25519::validate_public_key(public_key),
-            Scheme::MlDsa44 => ml_dsa::validate_public_key(public_key),
+            Scheme::MlDsa44 => ml_dsa_44::validate_public_key(public_key),
+            Scheme::MlDsa65 => ml_dsa_65::validate_public_key(public_key),
+            Scheme::SlhDsaSha2128s => slh_dsa::validate_public_key(public_key),
         }
     }
 
@@ -168,9 +199,15 @@ impl Scheme {
             Scheme::Ed25519 => Ok(PreparedSigner::Ed25519(Box::new(ed25519::prepare_signer(
                 secret_key,
             )?))),
-            Scheme::MlDsa44 => Ok(PreparedSigner::MlDsa44(Box::new(ml_dsa::prepare_signer(
-                secret_key,
-            )?))),
+            Scheme::MlDsa44 => Ok(PreparedSigner::MlDsa44(Box::new(
+                ml_dsa_44::prepare_signer(secret_key)?,
+            ))),
+            Scheme::MlDsa65 => Ok(PreparedSigner::MlDsa65(Box::new(
+                ml_dsa_65::prepare_signer(secret_key)?,
+            ))),
+            Scheme::SlhDsaSha2128s => Ok(PreparedSigner::SlhDsaSha2128s(Box::new(
+                slh_dsa::prepare_signer(secret_key)?,
+            ))),
         }
     }
 
@@ -181,7 +218,13 @@ impl Scheme {
                 ed25519::prepare_verifier(public_key)?,
             ))),
             Scheme::MlDsa44 => Ok(PreparedVerifier::MlDsa44(Box::new(
-                ml_dsa::prepare_verifier(public_key)?,
+                ml_dsa_44::prepare_verifier(public_key)?,
+            ))),
+            Scheme::MlDsa65 => Ok(PreparedVerifier::MlDsa65(Box::new(
+                ml_dsa_65::prepare_verifier(public_key)?,
+            ))),
+            Scheme::SlhDsaSha2128s => Ok(PreparedVerifier::SlhDsaSha2128s(Box::new(
+                slh_dsa::prepare_verifier(public_key)?,
             ))),
         }
     }
@@ -202,7 +245,9 @@ pub struct KeyPair {
 /// reconstruction and allocation.
 pub enum PreparedSigner {
     Ed25519(Box<ed25519::PreparedSigner>),
-    MlDsa44(Box<ml_dsa::PreparedSigner>),
+    MlDsa44(Box<ml_dsa_44::PreparedSigner>),
+    MlDsa65(Box<ml_dsa_65::PreparedSigner>),
+    SlhDsaSha2128s(Box<slh_dsa::PreparedSigner>),
 }
 
 impl PreparedSigner {
@@ -210,6 +255,8 @@ impl PreparedSigner {
         match self {
             PreparedSigner::Ed25519(s) => s.sign(msg),
             PreparedSigner::MlDsa44(s) => s.sign(msg),
+            PreparedSigner::MlDsa65(s) => s.sign(msg),
+            PreparedSigner::SlhDsaSha2128s(s) => s.sign(msg),
         }
     }
 }
@@ -218,7 +265,9 @@ impl PreparedSigner {
 /// reconstruction and allocation.
 pub enum PreparedVerifier {
     Ed25519(Box<ed25519::PreparedVerifier>),
-    MlDsa44(Box<ml_dsa::PreparedVerifier>),
+    MlDsa44(Box<ml_dsa_44::PreparedVerifier>),
+    MlDsa65(Box<ml_dsa_65::PreparedVerifier>),
+    SlhDsaSha2128s(Box<slh_dsa::PreparedVerifier>),
 }
 
 impl PreparedVerifier {
@@ -226,6 +275,8 @@ impl PreparedVerifier {
         match self {
             PreparedVerifier::Ed25519(v) => v.verify(msg, sig),
             PreparedVerifier::MlDsa44(v) => v.verify(msg, sig),
+            PreparedVerifier::MlDsa65(v) => v.verify(msg, sig),
+            PreparedVerifier::SlhDsaSha2128s(v) => v.verify(msg, sig),
         }
     }
 
@@ -233,6 +284,8 @@ impl PreparedVerifier {
         match self {
             PreparedVerifier::Ed25519(v) => v.verify_strict(msg, sig),
             PreparedVerifier::MlDsa44(v) => v.verify_strict(msg, sig),
+            PreparedVerifier::MlDsa65(v) => v.verify_strict(msg, sig),
+            PreparedVerifier::SlhDsaSha2128s(v) => v.verify_strict(msg, sig),
         }
     }
 }

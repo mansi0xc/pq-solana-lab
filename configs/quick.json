@@ -1,11 +1,27 @@
 {
   "run_id": "quick",
-  "warmup": 30,
+  "warmup": 10,
   "samples": 300,
-  "budget_seconds": 60,
+  "budget_seconds": 15,
   "min_samples": 200,
-  "message_lengths": [32, 166, 1024],
-  "schemes": ["ed25519", "ml-dsa-44"],
-  "modes": ["prepared", "byte"],
-  "input_classes": ["valid", "corrupted", "invalid_len"]
+  "message_lengths": [
+    32,
+    166,
+    1024
+  ],
+  "schemes": [
+    "ed25519",
+    "ml-dsa-44",
+    "ml-dsa-65",
+    "slh-dsa-sha2-128s"
+  ],
+  "modes": [
+    "prepared",
+    "byte"
+  ],
+  "input_classes": [
+    "valid",
+    "corrupted",
+    "invalid_len"
+  ]
 }

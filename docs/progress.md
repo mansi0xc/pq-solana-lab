@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | M1: Working primitives | **Complete** (committed) | `cargo test --release` → 10/10; demo genuine output |
 | M2: Authorization semantics | **Complete** (committed) | 46 tests pass (incl. Ed25519 RFC 8032 known-answer, weak-key rejection); demo genuine |
-| M3: Benchmark protocol | **In progress** — M3.1 harness done | quick profile ran: 15,000 raw rows + 50 summaries, all checks green |
+| M3: Benchmark protocol | **Complete** (pending review/commit) | 4 schemes benchmarked; ML-DSA interop cross-check; 49 tests + all checks green |
 | M4: Solana transport analysis | Not started | |
 | M5: sBPF verifier experiment | Not started | |
 | M6: Results and report | Not started | |
@@ -191,8 +191,35 @@ scheduled for M3.
   length check, while `prepared`-mode rejects wrong-length input at ~0 ns
   (below timer resolution); documented in `docs/methodology.md`.
 
+## M3.2 — additional schemes + interop cross-check (2026-10-05)
+
+- Added `fips205 =0.4.1` (SLH-DSA-SHA2-128s) and enabled `fips204`'s
+  `ml-dsa-65` feature. Renamed `src/crypto/ml_dsa.rs` → `ml_dsa_44.rs`, added
+  `ml_dsa_65.rs` and `slh_dsa.rs` adapters, and added `Scheme::MlDsa65` (id 3)
+  and `Scheme::SlhDsaSha2128s` (id 4) with full dispatch through the shared
+  interface (keygen/sign/verify/verify_strict/validate/prepared keys).
+- Independent ML-DSA interop cross-check (`tests/ml_dsa_interop.rs`, 3 tests):
+  a `fips204` signature verifies under the RustCrypto `ml-dsa` 0.1.1 crate (a
+  separate FIPS 204 final implementation) and vice versa, with a
+  tampered-message rejection. Closes the previously documented "self
+  round-trip only" gap for ML-DSA-44.
+- Updated `configs/quick.json` (warmup 10, 15s/case budget) and
+  `configs/full.json` (1000 samples, 60s/case budget) to cover all four
+  schemes. Re-ran the quick profile in 2m30s; the `full` profile is the
+  documented ~8-minute run deferred to M6.
+
+### M3.2 pilot observations (host, Apple M4; not conclusions)
+
+- SLH-DSA-SHA2-128s is far slower than the other schemes on this host: sign
+  ~512–580 ms, keygen ~66 ms, verify ~0.49 ms. Its sign cases hit the 15s/case
+  budget in the quick profile and therefore record only ~26–117 samples
+  (explicitly reported, no p95). The `s` variants trade fast signing for slow
+  keygen and small signatures (7,856-byte signatures here).
+- ML-DSA-65 keygen ~132 µs (vs ML-DSA-44 ~76 µs), sign and verify slightly
+  slower than ML-DSA-44, with 1,952-byte keys and 3,309-byte signatures.
+
 ## Next concrete action
 
-M3.2: add ML-DSA-65 and SLH-DSA-SHA2-128s adapters, run the frozen `full`
-profile across four schemes, and add the independent ML-DSA interop
-cross-check. Waiting for the user to commit M3.1 first.
+M4: Solana transport analysis — add the `solana-sdk` dependency, serialize
+legacy/v0 example transactions carrying the authorization material, and compute
+direct-versus-staged payload sizing. Waiting for the user to commit M3.2 first.

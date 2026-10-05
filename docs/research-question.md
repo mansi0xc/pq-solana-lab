@@ -63,9 +63,11 @@ Narrower questions (from `idea.md`):
   See `tests/ed25519_known_answer.rs`.
 - ML-DSA-44: the external sign API uses randomized ("hedged") signing, so
   there is no fixed expected signature to reproduce from a published vector.
-  Verification is deterministic and could be checked against a NIST ACVP
-  sigVer vector with an empty context, but no such vector has been sourced and
-  transcribed into the repo yet. The current ML-DSA validation is therefore a
-  self round-trip, which is not independent conformance evidence. This gap is
-  recorded (not silently claimed as complete); an interop cross-check is
-  scheduled for M3 when additional schemes are added.
+  Independent conformance is instead established by an interoperability
+  cross-check (`tests/ml_dsa_interop.rs`, added in M3): a signature produced by
+  `fips204` (the library behind this project's adapter) verifies under the
+  RustCrypto `ml-dsa` 0.1.1 crate, an independent FIPS 204 (final)
+  implementation, and vice versa, with a tampered-message rejection. This is
+  cross-implementation evidence, not a self round-trip. No NIST ACVP sigVer
+  vector has been transcribed; that remains a possible additional check, not a
+  blocking gap.

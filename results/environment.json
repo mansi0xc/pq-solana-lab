@@ -28,22 +28,48 @@
     "fips204": {
       "version": "0.4.6",
       "pinned": true,
-      "features": ["default-rng", "ml-dsa-44"],
-      "role": "ML-DSA-44 (FIPS 204), pure mode, empty context, randomized/hedged signing"
+      "features": ["default-rng", "ml-dsa-44", "ml-dsa-65"],
+      "role": "ML-DSA-44 and ML-DSA-65 (FIPS 204), pure mode, empty context, randomized/hedged signing"
+    },
+    "fips205": {
+      "version": "0.4.1",
+      "pinned": true,
+      "features": ["default-rng", "slh_dsa_sha2_128s"],
+      "role": "SLH-DSA-SHA2-128s (FIPS 205), pure mode, empty context, hedged signing"
     },
     "getrandom": {
       "version": "0.4.3",
       "pinned": true,
       "role": "OS randomness for Ed25519 seed generation"
+    },
+    "serde": {
+      "version": "1.0.229",
+      "pinned": true,
+      "role": "benchmark config/result serialization"
+    },
+    "serde_json": {
+      "version": "1.0.151",
+      "pinned": true,
+      "role": "benchmark config/result serialization"
+    }
+  },
+  "dev_dependencies": {
+    "ml-dsa": {
+      "version": "0.1.1",
+      "pinned": true,
+      "role": "Independent FIPS 204 (final) implementation (RustCrypto/signatures), used only for the ML-DSA interop cross-check test"
     }
   },
   "notable_transitive_dependencies": {
     "fips204 RNG": "rand_core 0.6.4 + getrandom 0.2.17 (internal to fips204 default-rng)",
+    "fips205 RNG": "rand_core + getrandom (internal to fips205 default-rng)",
     "ed25519-dalek backend": "curve25519-dalek 5.0.0, sha2 0.11.0",
     "fips204 hashing": "sha3 0.10.9"
   },
   "signing_modes": {
     "ed25519": "RFC 8032 pure Ed25519, deterministic",
-    "ml-dsa-44": "FIPS 204 pure mode, context = empty string, randomized (hedged) signing"
+    "ml-dsa-44": "FIPS 204 pure mode, context = empty string, randomized (hedged) signing",
+    "ml-dsa-65": "FIPS 204 pure mode, context = empty string, randomized (hedged) signing",
+    "slh-dsa-sha2-128s": "FIPS 205 pure mode, context = empty string, hedged signing"
   }
 }

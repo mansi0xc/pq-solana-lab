@@ -121,6 +121,8 @@ fn scheme_from_name(name: &str) -> Option<Scheme> {
     match name {
         "ed25519" => Some(Scheme::Ed25519),
         "ml-dsa-44" => Some(Scheme::MlDsa44),
+        "ml-dsa-65" => Some(Scheme::MlDsa65),
+        "slh-dsa-sha2-128s" => Some(Scheme::SlhDsaSha2128s),
         _ => None,
     }
 }

@@ -36,12 +36,15 @@ rather than reimplemented:
 | Primitive | Crate | Pinned | Standard | Independent correctness evidence in this repo |
 | --- | --- | --- | --- | --- |
 | Ed25519 | `ed25519-dalek` | 3.0.0 | RFC 8032 | RFC 8032 §7.1 known-answer tests (`tests/ed25519_known_answer.rs`) |
-| ML-DSA-44 | `fips204` | 0.4.6 | FIPS 204 | self round-trip only so far; external-API known-answer check is a documented gap |
+| ML-DSA-44 | `fips204` | 0.4.6 | FIPS 204 | interop cross-check vs RustCrypto `ml-dsa` 0.1.1 (`tests/ml_dsa_interop.rs`) |
+| ML-DSA-65 | `fips204` | 0.4.6 | FIPS 204 | same library as ML-DSA-44 |
+| SLH-DSA-SHA2-128s | `fips205` | 0.4.1 | FIPS 205 | self round-trip |
 
 "Standardization" (a scheme appearing in a NIST FIPS), "testing" (this repo's
 own tests), "independent conformance evidence" (e.g. known-answer vectors from
-a primary source), and "implementation audits" (a published third-party audit
-of a specific crate release) are four different things. This project provides
-the first two; the Ed25519 row cites primary-source vectors for the third;
-no third-party audit report is relied upon or claimed for these pinned crate
-versions.
+a primary source, or cross-verification against an independent implementation),
+and "implementation audits" (a published third-party audit of a specific crate
+release) are four different things. This project provides the first two, plus
+primary-source vectors (Ed25519) and a cross-implementation check (ML-DSA-44)
+for the third; no third-party audit report is relied upon or claimed for these
+pinned crate versions.
