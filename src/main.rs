@@ -31,6 +31,7 @@ fn run_transport() {
         serde_json::to_string_pretty(&rows).expect("serialize transport"),
     )
     .unwrap_or_else(|e| panic!("write {path}: {e}"));
+    println!("== direct inclusion (serialized) ==");
     println!("scheme              format  placement  sig      pk      total   limit  headroom");
     for r in &rows {
         println!(
@@ -45,7 +46,31 @@ fn run_transport() {
             r.headroom
         );
     }
-    println!("wrote {path}");
+
+    let staged = pq_solana_lab::transport::staged();
+    let spath = "results/transport-staged.json";
+    std::fs::write(
+        spath,
+        serde_json::to_string_pretty(&staged).expect("serialize staged"),
+    )
+    .unwrap_or_else(|e| panic!("write {spath}: {e}"));
+    println!();
+    println!("== staged upload (modeled) ==");
+    println!("scheme              format  sig     chunk  chunks  total_tx  total_bytes  limit");
+    for r in &staged {
+        println!(
+            "{:<18} {:<7} {:>6} {:>6} {:>7} {:>8} {:>12} {:>6}",
+            r.scheme,
+            r.format,
+            r.signature_bytes,
+            r.chunk_bytes,
+            r.chunk_count,
+            r.total_transactions,
+            r.total_transport_bytes,
+            r.applicable_limit
+        );
+    }
+    println!("wrote {path} and {spath}");
 }
 
 fn run_benchmark(args: &[String]) {

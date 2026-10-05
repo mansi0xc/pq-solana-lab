@@ -44,7 +44,55 @@ bytes per transaction but does not address the signature size.
   request does not establish trust.
 - **Account lifecycle**: the two accounts (payer + program) are assumed to
   exist; no rent/cleanup is modeled here (staged upload in M4.2).
-- **v1**: the SDK exposes a v1 message variant; serialization of v1 and the
-  staged-upload chunking are deferred to M4.2.
+- **v1**: serialized with the SDK's `v1::Message` (`solana-sdk` 5.0.0). The
+  v1 limit is the SDK's `v1::MAX_TRANSACTION_SIZE` = 4,096 bytes.
 - A size result is a transport measurement, not an executed authorization and
   not a claim about verification cost or compute units.
+
+## v1 direct-inclusion results
+
+v1's 4,096-byte limit changes the picture for the smaller post-quantum scheme:
+
+| Scheme | inline (v1) | registered (v1) | Fits in v1? |
+| --- | --- | --- | --- |
+| ed25519 | 419 | 421 | yes |
+| ml-dsa-44 | 4089 | 2777 | inline barely (7-byte headroom); registered yes |
+| ml-dsa-65 | 5618 | 3666 | inline no; registered yes |
+| slh-dsa-sha2-128s | 8245 | 8213 | no |
+
+ML-DSA-44 fits in v1 (inline by 7 bytes; comfortably when registered);
+ML-DSA-65 fits only when registered; SLH-DSA-SHA2-128s still does not fit.
+
+## Staged upload (modeled)
+
+Staged uploads split the signature across multiple "store chunk" transactions
+(initialization, N chunk uploads, and a final reference transaction). The
+largest safe chunk per format is derived by binary search over the
+actually-serialized upload-transaction template (a 3-account transaction: fee
+payer + program + storage account), with a stated margin of zero because the
+template already includes all accounts, signatures, and framing.
+
+| Scheme | format | sig | chunk | chunks | transactions | total transport bytes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ml-dsa-44 | legacy/v0 | 2420 | 1027/1025 | 3 | 5 | 3611/3621 |
+| ml-dsa-44 | v1 | 2420 | 3872 | 1 | 3 | 3258 |
+| ml-dsa-65 | legacy/v0 | 3309 | 1027/1025 | 4 | 6 | 4705/4717 |
+| ml-dsa-65 | v1 | 3309 | 3872 | 1 | 3 | 4147 |
+| slh-dsa-sha2-128s | legacy/v0 | 7856 | 1027/1025 | 8 | 10 | 10072/10092 |
+| slh-dsa-sha2-128s | v1 | 7856 | 3872 | 3 | 5 | 9141 |
+
+**Observation (modeled):** staging makes each individual transaction fit the
+format limit, but it increases the *total* transported bytes (per-transaction
+overhead is repeated) and introduces on-chain storage and upload state. It does
+not address verification cost. Storage bytes equal the signature size; the
+upload lifecycle itself is a model, not an executed sequence, and the
+initialization/upload/final transactions are serialized but not executed.
+
+## Direct vs staged
+
+- Direct inclusion is one transaction but fails the limit for every
+  post-quantum scheme here (in legacy/v0, and for ML-DSA-65/SLH-DSA in v1).
+- Staged upload always fits per transaction, at the cost of more total bytes,
+  more transactions, and on-chain state.
+- Neither approach changes the fact that the signature must still be verified
+  on chain.

@@ -7,7 +7,7 @@
 | M1: Working primitives | **Complete** (committed) | `cargo test --release` → 10/10; demo genuine output |
 | M2: Authorization semantics | **Complete** (committed) | 46 tests pass (incl. Ed25519 RFC 8032 known-answer, weak-key rejection); demo genuine |
 | M3: Benchmark protocol | **Complete** (pending review/commit) | 4 schemes benchmarked; ML-DSA interop cross-check; 49 tests + all checks green |
-| M4: Solana transport analysis | **In progress** — M4.1 direct sizing done | legacy/v0 serialized; ML-DSA/SLH-DSA exceed 1232-byte limit even when key registered |
+| M4: Solana transport analysis | **Complete** (pending review/commit) | legacy/v0/v1 serialized; direct + staged sizing; ML-DSA-44 fits v1, larger schemes don't |
 | M5: sBPF verifier experiment | Not started | |
 | M6: Results and report | Not started | |
 | M7: Release | Not started | |
@@ -244,9 +244,31 @@ ML-DSA-65 = 3,647, SLH-DSA-SHA2-128s = 8,194 (registered). Ed25519 = 402
 bytes. Registration saves exactly the public-key bytes (e.g. 1,312 for
 ML-DSA-44) but does not address signature size.
 
+## M4.2 — v1 serialization + staged upload (2026-10-05)
+
+- Extended `src/transport.rs` to serialize v1 transactions via the SDK's
+  `v1::Message::try_compile_with_config` (`VersionedMessage::V1`); the v1 limit
+  is the SDK's `v1::MAX_TRANSACTION_SIZE` = 4,096.
+- Added a staged-upload model: initialization + N chunk uploads + final
+  reference. The largest safe chunk per format is derived by binary search over
+  the actually-serialized 3-account upload template (stated margin 0).
+- `tests/transport.rs` (8 tests) pins the findings, incl. "v1 lifts ML-DSA-44
+  but not ML-DSA-65/SLH-DSA" and "staged chunking is consistent and labeled
+  modeled".
+
+### M4 measured results
+
+- **Direct**: ML-DSA-44 fits v1 inline (4,089 bytes, 7-byte headroom) and
+  comfortably when registered; ML-DSA-65 fits v1 only when registered (3,666);
+  SLH-DSA-SHA2-128s exceeds even v1 (8,213 registered).
+- **Staged (modeled)**: chunk sizes ~1,027 (legacy/v0) and ~3,872 (v1);
+  SLH-DSA needs 8 legacy chunks / 3 v1 chunks. Staging makes each transaction
+  fit but raises total transport bytes (repeated per-transaction overhead) and
+  introduces on-chain state; it does not reduce verification cost.
+
 ## Next concrete action
 
-M4.2: v1 serialization (the SDK exposes a v1 message), staged-upload chunking
-(initialize/append/reference with per-format chunk sizes), and the
-direct-versus-staged comparison table. Waiting for the user to commit M4.1
-first.
+M5: bounded sBPF verifier experiment — first confirm a minimal Solana program
+builds/executes with the installed `1.89.0-sbpf-solana-v1.52` toolchain, then
+attempt verification-only ML-DSA-44 code with a host-validated fixture,
+time-boxed to four hours. Waiting for the user to commit M4.2 first.
