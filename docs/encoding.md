@@ -40,6 +40,9 @@ Design rules:
 | scheme byte not in {1, 2} | `UnknownScheme` error |
 | any other 166-byte buffer | decodes; environment/policy checks are the authorizer's job, not the decoder's |
 
+The version byte is a *format* version enforced by the decoder only. There is
+no configurable environment version, and no version-2 encoding is supported.
+
 The decoder deliberately does **not** compare the domain, network, or program
 fields against expected values. Those are authorization-policy checks in
 `src/authorization.rs`, so that a correctly signed intent for the wrong

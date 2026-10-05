@@ -148,4 +148,4 @@ Proof-based verification aggregation is another future direction. Any such exten
 
 ## Execution plan
 
-The companion [seven-day milestone plan](PQ-Solana-Milestone-Plan.md) defines tasks, completion gates, time limits, and fallback options. The first working slice is an ML-DSA-44 signature that verifies after serialization, with altered-message and wrong-key rejection tests.
+The companion [seven-day milestone plan](plan.md) defines tasks, completion gates, time limits, and fallback options. The first working slice is an ML-DSA-44 signature that verifies after serialization, with altered-message and wrong-key rejection tests.

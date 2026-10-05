@@ -169,3 +169,83 @@ fn published_sizes_match_the_standards() {
     assert_eq!(Scheme::MlDsa44.secret_key_len(), 2560);
     assert_eq!(Scheme::MlDsa44.signature_len(), 2420);
 }
+
+#[test]
+fn ed25519_validate_public_key_rejects_weak_and_malformed_keys() {
+    // Identity point (y = 1): decompresses fine but is low-order (weak).
+    let identity = {
+        let mut v = vec![0u8; 32];
+        v[0] = 1;
+        v
+    };
+    assert_eq!(
+        Scheme::Ed25519.validate_public_key(&identity),
+        Err(CryptoError::WeakKey)
+    );
+
+    // 0x02.. is a non-decompressible encoding (y = 2 has no square root).
+    assert_eq!(
+        Scheme::Ed25519.validate_public_key(&[0x02u8; 32]),
+        Err(CryptoError::MalformedEncoding("ed25519 public key"))
+    );
+
+    // Note: ed25519-dalek's `from_bytes` validates under ZIP-215, which
+    // accepts some non-canonical y encodings (e.g. 0xff..) as aliases of real
+    // curve points; those are not rejected here and are not weak. `is_weak`
+    // is the check that catches low-order points.
+
+    // A freshly generated key must validate.
+    let kp = Scheme::Ed25519.keygen().unwrap();
+    Scheme::Ed25519.validate_public_key(&kp.public).unwrap();
+}
+
+#[test]
+fn ed25519_strict_verification_rejects_identity_forgery_that_plain_verify_accepts() {
+    // Reviewer's secretless-authorization fixture: identity public key,
+    // R = identity point, S = 0.
+    let mut weak_pk = vec![0u8; 32];
+    weak_pk[0] = 1;
+    let mut sig = vec![0u8; 64];
+    sig[0] = 1;
+    let msg = b"forgery fixture";
+
+    // Plain (RFC 8032) verification accepts the low-order forgery.
+    assert_eq!(Scheme::Ed25519.verify(&weak_pk, msg, &sig), Ok(true));
+
+    // Strict verification rejects it.
+    assert_eq!(
+        Scheme::Ed25519.verify_strict(&weak_pk, msg, &sig),
+        Ok(false)
+    );
+}
+
+#[test]
+fn prepared_keys_match_the_byte_path() {
+    for scheme in Scheme::ALL {
+        let kp = scheme.keygen().unwrap();
+        let msg = b"prepared vs byte path";
+
+        let signer = scheme.prepare_signer(&kp.secret).unwrap();
+        let verifier = scheme.prepare_verifier(&kp.public).unwrap();
+
+        // ML-DSA signing is randomized, so two sign calls are not
+        // byte-identical; assert functional equivalence instead.
+        let sig = signer.sign(msg).unwrap();
+        assert!(
+            verifier.verify(msg, &sig).unwrap(),
+            "{scheme:?} prepared verify"
+        );
+        assert!(
+            verifier.verify_strict(msg, &sig).unwrap(),
+            "{scheme:?} prepared strict"
+        );
+        assert!(
+            scheme.verify(&kp.public, msg, &sig).unwrap(),
+            "{scheme:?} byte-path verify"
+        );
+        assert!(
+            scheme.verify_strict(&kp.public, msg, &sig).unwrap(),
+            "{scheme:?} byte-path strict"
+        );
+    }
+}

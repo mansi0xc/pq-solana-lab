@@ -6,14 +6,17 @@
 use std::collections::HashMap;
 
 use crate::crypto::{CryptoError, Scheme};
-use crate::intent::{IntentError, WithdrawalIntent, DOMAIN_PREFIX, ENCODING_VERSION};
+use crate::intent::{IntentError, WithdrawalIntent, DOMAIN_PREFIX};
 
-/// Expected application environment. A request must bind to all four of these
-/// before it is authorized.
+/// Expected application environment. A request must bind to these before it
+/// is authorized.
+///
+/// The encoding *version* is deliberately not a field here: it is a format
+/// version enforced by the intent decoder (`ENCODING_VERSION`), not a
+/// configurable environment attribute. Only encoding version 1 exists.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Environment {
     pub domain: [u8; 8],
-    pub version: u8,
     pub network_id: [u8; 32],
     pub program_id: [u8; 32],
 }
@@ -22,7 +25,6 @@ impl Environment {
     pub fn new(network_id: [u8; 32], program_id: [u8; 32]) -> Self {
         Self {
             domain: DOMAIN_PREFIX,
-            version: ENCODING_VERSION,
             network_id,
             program_id,
         }
@@ -39,10 +41,15 @@ pub struct RegisteredKey {
     pub public_key: Vec<u8>,
 }
 
-/// A mock ledger entry recording one authorized withdrawal.
+/// A mock ledger entry recording one authorized withdrawal. The signed asset
+/// identifier is preserved so requests for different assets stay
+/// distinguishable. (Preserving the full validated intent or a digest would
+/// improve traceability further but is out of scope to avoid a hashing
+/// dependency; the asset field covers the reported ambiguity.)
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct AuthorizationRecord {
     pub key_id: u32,
+    pub asset: [u8; 32],
     pub recipient: [u8; 32],
     pub amount: u64,
     pub nonce: u64,
@@ -55,13 +62,19 @@ pub struct KeyRegistry {
 }
 
 impl KeyRegistry {
+    /// Register a key. Rejects duplicates, wrong-length key material, weak
+    /// (low-order) Ed25519 keys, and non-decompressible encodings via
+    /// [`Scheme::validate_public_key`].
     pub fn register(&mut self, key: RegisteredKey) -> Result<(), AuthError> {
-        if key.public_key.len() != key.scheme.public_key_len() {
-            return Err(AuthError::MalformedRegistration(key.key_id));
-        }
         if self.keys.contains_key(&key.key_id) {
             return Err(AuthError::DuplicateRegistration(key.key_id));
         }
+        key.scheme
+            .validate_public_key(&key.public_key)
+            .map_err(|e| match e {
+                CryptoError::WeakKey => AuthError::WeakKey(key.key_id),
+                _ => AuthError::MalformedRegistration(key.key_id),
+            })?;
         self.keys.insert(key.key_id, key);
         Ok(())
     }
@@ -125,9 +138,13 @@ impl Authorizer {
             });
         }
 
+        // Strict verification: for Ed25519 this denies weak keys and
+        // small-order signature components in addition to the ordinary
+        // checks. Registration also rejects weak keys; this is defense in
+        // depth at the verification step.
         match registered
             .scheme
-            .verify(&registered.public_key, intent_bytes, signature)
+            .verify_strict(&registered.public_key, intent_bytes, signature)
         {
             Ok(true) => {}
             Ok(false) => return Err(AuthError::InvalidSignature),
@@ -143,7 +160,8 @@ impl Authorizer {
         if intent.program_id != self.env.program_id {
             return Err(AuthError::ProgramMismatch);
         }
-        // Version is already enforced by the decoder.
+        // Encoding version is enforced by the decoder; there is no separate
+        // configurable environment version.
 
         if current_slot > intent.expiry_slot {
             return Err(AuthError::Expired {
@@ -166,6 +184,7 @@ impl Authorizer {
         self.next_nonce.insert(intent.key_id, next);
         let record = AuthorizationRecord {
             key_id: intent.key_id,
+            asset: intent.asset,
             recipient: intent.recipient,
             amount: intent.amount,
             nonce: intent.nonce,
@@ -186,6 +205,7 @@ pub enum AuthError {
     MalformedIntent(IntentError),
     MalformedSignature(CryptoError),
     MalformedRegistration(u32),
+    WeakKey(u32),
     DuplicateRegistration(u32),
     UnregisteredKey(u32),
     SchemeMismatch {
@@ -216,6 +236,12 @@ impl std::fmt::Display for AuthError {
             AuthError::MalformedSignature(e) => write!(f, "malformed signature: {e}"),
             AuthError::MalformedRegistration(id) => {
                 write!(f, "registration for key {id} has malformed key material")
+            }
+            AuthError::WeakKey(id) => {
+                write!(
+                    f,
+                    "registration for key {id} rejected: weak (low-order) key"
+                )
             }
             AuthError::DuplicateRegistration(id) => write!(f, "key {id} is already registered"),
             AuthError::UnregisteredKey(id) => write!(f, "key {id} is not registered"),
@@ -291,8 +317,60 @@ mod tests {
             authorizer.authorize(&bytes, &sig, 0).unwrap_err(),
             AuthError::NonceOverflow
         );
-        // State must be unchanged.
         assert_eq!(authorizer.expected_nonce(1), u64::MAX);
+        assert!(authorizer.ledger().is_empty());
+    }
+
+    // Regression test for the reviewer's "secretless authorization" finding.
+    // Bypass registration validation to force a weak (identity-point) Ed25519
+    // key into the registry, then show that strict verification still rejects
+    // the identity-R/zero-S forgery without touching nonce or ledger state.
+    #[test]
+    fn secretless_authorization_via_weak_key_is_rejected_by_verify_strict() {
+        // Identity point: y = 1, x sign bit = 0.
+        let weak_pk = {
+            let mut v = vec![0u8; 32];
+            v[0] = 1;
+            v
+        };
+        // Forgery: R = identity point, S = 0.
+        let mut sig = vec![0u8; 64];
+        sig[0] = 1;
+
+        let mut authorizer = Authorizer::new(
+            Environment::new([0xab; 32], [0xcd; 32]),
+            KeyRegistry::default(),
+        );
+        // Force the weak key into the registry, skipping validation, to model
+        // "a weak key was admitted to the trusted registry".
+        authorizer.registry.keys.insert(
+            42,
+            RegisteredKey {
+                key_id: 42,
+                scheme: Scheme::Ed25519,
+                public_key: weak_pk,
+            },
+        );
+
+        let it = WithdrawalIntent::new(
+            Scheme::Ed25519,
+            42,
+            [0xab; 32],
+            [0xcd; 32],
+            [0x01; 32],
+            [0x02; 32],
+            100,
+            0,
+            1000,
+        );
+        let bytes = it.encode();
+
+        assert_eq!(
+            authorizer.authorize(&bytes, &sig, 500).unwrap_err(),
+            AuthError::InvalidSignature
+        );
+        // State unchanged.
+        assert_eq!(authorizer.expected_nonce(42), 0);
         assert!(authorizer.ledger().is_empty());
     }
 }

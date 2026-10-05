@@ -5,6 +5,9 @@
 //! - Mode: pure ML-DSA (not pre-hashed), context string = empty (`b""`).
 //! - Signing randomness: randomized ("hedged") signing, the library default.
 //! - Key generation randomness: OS-backed via the crate's `default-rng`.
+//!
+//! ML-DSA has no "strict" vs "weak key" distinction; `verify_strict` is an
+//! alias for `verify` here.
 
 use fips204::ml_dsa_44;
 use fips204::traits::{SerDes, Signer, Verifier};
@@ -29,6 +32,28 @@ pub fn keygen() -> Result<KeyPair, CryptoError> {
 }
 
 pub fn sign(secret_key: &[u8], msg: &[u8]) -> Result<Vec<u8>, CryptoError> {
+    prepare_signer(secret_key)?.sign(msg)
+}
+
+pub fn verify(public_key: &[u8], msg: &[u8], sig: &[u8]) -> Result<bool, CryptoError> {
+    prepare_verifier(public_key)?.verify(msg, sig)
+}
+
+pub fn verify_strict(public_key: &[u8], msg: &[u8], sig: &[u8]) -> Result<bool, CryptoError> {
+    prepare_verifier(public_key)?.verify(msg, sig)
+}
+
+pub fn validate_public_key(public_key: &[u8]) -> Result<(), CryptoError> {
+    prepare_verifier(public_key).map(|_| ())
+}
+
+/// A secret key parsed once (key expansion happens here, not per sign).
+pub struct PreparedSigner(ml_dsa_44::PrivateKey);
+
+/// A public key parsed once (verification precomputation happens here).
+pub struct PreparedVerifier(ml_dsa_44::PublicKey);
+
+pub fn prepare_signer(secret_key: &[u8]) -> Result<PreparedSigner, CryptoError> {
     let sk_bytes: [u8; SECRET_KEY_LEN] =
         secret_key
             .try_into()
@@ -39,13 +64,10 @@ pub fn sign(secret_key: &[u8], msg: &[u8]) -> Result<Vec<u8>, CryptoError> {
             })?;
     let sk = ml_dsa_44::PrivateKey::try_from_bytes(sk_bytes)
         .map_err(|_| CryptoError::MalformedEncoding("ml-dsa-44 secret key"))?;
-    let sig = sk
-        .try_sign(msg, CONTEXT)
-        .map_err(|e| CryptoError::Sign(e.to_string()))?;
-    Ok(sig.to_vec())
+    Ok(PreparedSigner(sk))
 }
 
-pub fn verify(public_key: &[u8], msg: &[u8], sig: &[u8]) -> Result<bool, CryptoError> {
+pub fn prepare_verifier(public_key: &[u8]) -> Result<PreparedVerifier, CryptoError> {
     let pk_bytes: [u8; PUBLIC_KEY_LEN] =
         public_key
             .try_into()
@@ -56,11 +78,30 @@ pub fn verify(public_key: &[u8], msg: &[u8], sig: &[u8]) -> Result<bool, CryptoE
             })?;
     let pk = ml_dsa_44::PublicKey::try_from_bytes(pk_bytes)
         .map_err(|_| CryptoError::MalformedEncoding("ml-dsa-44 public key"))?;
-    let sig_bytes: [u8; SIGNATURE_LEN] =
-        sig.try_into().map_err(|_| CryptoError::InvalidLength {
-            what: "ml-dsa-44 signature",
-            expected: SIGNATURE_LEN,
-            actual: sig.len(),
-        })?;
-    Ok(pk.verify(msg, &sig_bytes, CONTEXT))
+    Ok(PreparedVerifier(pk))
+}
+
+impl PreparedSigner {
+    pub fn sign(&self, msg: &[u8]) -> Result<Vec<u8>, CryptoError> {
+        self.0
+            .try_sign(msg, CONTEXT)
+            .map(|sig| sig.to_vec())
+            .map_err(|e| CryptoError::Sign(e.to_string()))
+    }
+}
+
+impl PreparedVerifier {
+    pub fn verify(&self, msg: &[u8], sig: &[u8]) -> Result<bool, CryptoError> {
+        let sig_bytes: [u8; SIGNATURE_LEN] =
+            sig.try_into().map_err(|_| CryptoError::InvalidLength {
+                what: "ml-dsa-44 signature",
+                expected: SIGNATURE_LEN,
+                actual: sig.len(),
+            })?;
+        Ok(self.0.verify(msg, &sig_bytes, CONTEXT))
+    }
+
+    pub fn verify_strict(&self, msg: &[u8], sig: &[u8]) -> Result<bool, CryptoError> {
+        self.verify(msg, sig)
+    }
 }

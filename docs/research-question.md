@@ -52,7 +52,20 @@ Narrower questions (from `idea.md`):
   revision of the publication. The errata items were not individually
   evaluated here; the project tests the published standard as implemented by
   `fips204` 0.4.6, and any erratum affecting the external KeyGen/Sign/Verify
-  behavior would surface as a test failure against known-answer vectors in
-  later milestones. The `fips204` crate documents that NIST test vectors are
-  applied to its internal functions (see its deprecation notes on
-  `_internal_sign`/`_internal_verify`).
+  behavior would surface as a test failure. The `fips204` crate documents that
+  NIST test vectors are applied to its internal functions (see its deprecation
+  notes on `_internal_sign`/`_internal_verify`).
+
+## Independent correctness evidence status (updated M2 correction batch)
+
+- Ed25519: known-answer tests against RFC 8032 §7.1 (a primary source) now
+  cover key derivation, exact signature bytes, and verification.
+  See `tests/ed25519_known_answer.rs`.
+- ML-DSA-44: the external sign API uses randomized ("hedged") signing, so
+  there is no fixed expected signature to reproduce from a published vector.
+  Verification is deterministic and could be checked against a NIST ACVP
+  sigVer vector with an empty context, but no such vector has been sourced and
+  transcribed into the repo yet. The current ML-DSA validation is therefore a
+  self round-trip, which is not independent conformance evidence. This gap is
+  recorded (not silently claimed as complete); an interop cross-check is
+  scheduled for M3 when additional schemes are added.

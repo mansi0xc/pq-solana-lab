@@ -5,7 +5,7 @@
 | Milestone | Status | Evidence |
 | --- | --- | --- |
 | M1: Working primitives | **Complete** (committed) | `cargo test --release` → 10/10; demo genuine output |
-| M2: Authorization semantics | **Complete** (pending review/commit) | 34 tests pass; demo shows accept + replay/tamper/expiry/network rejection |
+| M2: Authorization semantics | **Complete** (pending review/commit) | 46 tests pass (incl. Ed25519 RFC 8032 known-answer, weak-key rejection); demo genuine |
 | M3: Benchmark protocol | Not started | |
 | M4: Solana transport analysis | Not started | |
 | M5: sBPF verifier experiment | Not started | |
@@ -112,9 +112,60 @@
   wrong-length test that clamped a 167-byte buffer back to 166. Both were
   straightforward to fix; no production-code defects.
 
+## Correction batch (reviewer findings, 2026-10-04)
+
+Six issues fixed, with verification:
+
+1. **Weak Ed25519 keys allowed secretless authorization.** Registration now
+   validates via `Scheme::validate_public_key` (dalek `from_bytes` +
+   `is_weak`), and the authorization path uses `verify_strict`. Regression
+   tests: weak/malformed registration rejection, and a unit test that forces a
+   weak key past registration and shows `verify_strict` rejects the
+   identity-R/zero-S forgery with nonce/ledger unchanged.
+2. **Authorization records omitted the asset.** `AuthorizationRecord.asset`
+   added; demo and tests assert the signed asset is preserved and distinct
+   assets stay distinguishable.
+3. **Configurable environment version was ignored.** Removed `Environment.version`; the
+   encoding version is a parser-only concern enforced by the decoder. Tests and
+   docs updated.
+4. **Verification-result docs misclassified malformed signatures.** Rewrote the
+   contract: `Ok(false)` is an opaque backend rejection (does not identify a
+   failure stage); adapter-detected length/decoding errors are `Err`. Input
+   classes are documented to come from fixtures, not from `Ok(false)`.
+5. **README audit claim.** Replaced with precise reuse/attribution language
+   distinguishing standardization, testing, conformance evidence, and audits.
+6. **Broken links.** Fixed `crypto.rs` `[`Scheme::verify`]` and `idea.md`'s
+   companion-plan link (`plan.md`).
+
+Evidence strengthened: authorization scenarios now run for both schemes;
+independent Ed25519 correctness via RFC 8032 §7.1 known-answer vectors
+(provenance recorded in `tests/ed25519_known_answer.rs`); a minimal
+prepared-key path (`prepare_signer`/`prepare_verifier`) establishes the
+"already-parsed key" vs "byte adapter" vs "complete authorization" measurement
+boundaries without starting the benchmark campaign.
+
+### ML-DSA independent-correctness gap (recorded, not claimed complete)
+
+The ML-DSA external sign API uses randomized ("hedged") signing, so no fixed
+published signature can be reproduced; verification is deterministic but no
+NIST ACVP sigVer vector (empty context) has been sourced/transcribed yet. The
+crate documents that NIST vectors apply to its internal functions only. Current
+ML-DSA validation is therefore a self round-trip; an interop cross-check is
+scheduled for M3.
+
+### Commands run (this batch)
+
+- `cargo fmt --check` → clean
+- `cargo test --release --locked` → 46 passed, 0 failed
+- `cargo clippy --release --all-targets --locked -- -D warnings` → clean
+- `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --locked` → clean
+- `cargo run --release --locked -- demo` → genuine output
+- `git diff --check` → clean
+
 ## Next concrete action
 
 M3: benchmark harness — add ML-DSA-65 and SLH-DSA-SHA2-128s via `fips204`/
-`fips205`, separate primitive keygen/sign/verify timings from end-to-end
-authorization, write the raw-sample schema and config profiles. Waiting for the
-user to commit M2 first.
+`fips205`, use the prepared-key path to separate primitive from byte-adapter
+timings, write the raw-sample schema and config profiles, and add the
+independent ML-DSA interop cross-check. Waiting for the user to commit this
+correction batch first.

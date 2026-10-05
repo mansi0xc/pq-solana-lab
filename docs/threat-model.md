@@ -41,6 +41,31 @@ inside the signed bytes) prevents cross-scheme and cross-key reinterpretation.
 This is a *conditional application argument*, not a proof of ML-DSA or Ed25519
 and not an audit of a production system.
 
+## Key validation and strict verification
+
+- **Registration validates keys.** `KeyRegistry::register` runs
+  `Scheme::validate_public_key`: Ed25519 rejects non-decompressible encodings
+  and weak (low-order) keys such as the identity point; ML-DSA validates the
+  fixed-size key deserializes. A weak Ed25519 key would otherwise let an
+  attacker forge a valid signature with no secret key.
+- **Authorization verifies strictly.** The authorization path uses
+  `Scheme::verify_strict`, which for Ed25519 additionally rejects weak public
+  keys and small-order signature components (`ed25519-dalek` 3.0's
+  `verify_strict`). This is defense in depth on top of registration: even if a
+  weak key were admitted to the registry, strict verification rejects the
+  identity-R / zero-S forgery. See the `secretless_authorization_*` tests.
+- **Ed25519 verification is non-strict in the generic byte path** (`verify`),
+  matching RFC 8032; the strict path is used only where application
+  authorization requires it.
+
+## Encoding version is a parser concern, not environment configuration
+
+The intent encoding version is fixed (`ENCODING_VERSION = 1`) and enforced by
+the intent decoder, which rejects any other version byte before policy checks.
+There is no configurable "environment version": an environment does not
+advertise support for version 2, and version 2 intents cannot be parsed. This
+keeps parser support and application policy consistent.
+
 ## What is NOT protected
 
 - **Replay across restarts:** nonce state (`next_nonce`, ledger) is in-memory

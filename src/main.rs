@@ -92,8 +92,9 @@ fn authorization_section() {
     let rec = authorizer
         .authorize(&bytes, &sig, 500)
         .expect("valid request");
+    assert_eq!(rec.asset, asset);
     println!(
-        "valid request:       ACCEPTED (nonce {} consumed, amount {}, slot {})",
+        "valid request:       ACCEPTED (nonce {} consumed, amount {}, asset preserved, slot {})",
         rec.nonce, rec.amount, rec.at_slot
     );
 
