@@ -27,10 +27,10 @@
     ],
     "warmup": 10
   },
-  "git_revision": "97a682ce6e4bc549e822781e204b5617a793bae8",
+  "git_revision": "0d064be42c3ca50035717e01c54aa9e1bbad6aad",
   "note": "Host timings describe one implementation on one machine; not a universal ranking, not constant-time evidence, never converted to Solana compute units.",
   "os": "macos",
-  "recorded_unix_s": 1791211247,
+  "recorded_unix_s": 1791288360,
   "run_id": "quick",
   "working_tree_dirty": true
 }

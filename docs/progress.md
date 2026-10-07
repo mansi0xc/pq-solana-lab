@@ -10,7 +10,7 @@
 | M4: Solana transport analysis | **Complete** (pending review/commit) | legacy/v0/v1 serialized; direct + staged sizing; ML-DSA-44 fits v1, larger schemes don't |
 | M5: sBPF verifier experiment | **Complete** (blocker documented) | fips204 ML-DSA-44 compiles for sBF but fails the 4,096-byte stack-frame check (`verify_internal` ~62 KB) |
 | M6: Results and report | **Complete** (pending review/commit) | full profile run (94,546 raw rows); 3 plots; report + AI-usage doc written |
-| M7: Release | Not started | |
+| M7: Release | **Complete** (pending review/commit) | README in reviewer order; CI; demo script + outline; interview Q&A; résumé bullet |
 
 ## M1 — what was done (2026-10-04)
 
@@ -302,9 +302,19 @@ ML-DSA-44) but does not address signature size.
   paper (ePrint 2026/013) is cited from its abstract, and the limitation that a
   specific numbered theorem from its proof was not traced is stated explicitly.
 
-## Next concrete action
+## M7 — reviewable release (2026-10-06)
 
-M7: reviewable release — README in reviewer order, clean-checkout validation
-(fmt, clippy, test, rustdoc, demo, quick benchmark, transport), CI for
-correctness + a smoke run, and demonstration materials. Waiting for the user to
-commit M6 first.
+- Rewrote `README.md` in reviewer order (question, finding, reproduction,
+  plot, demo, report, design, limitations, attribution) with an accurate
+  résumé bullet.
+- Added `.github/workflows/ci.yml`: fmt, clippy `-D warnings`, release tests,
+  rustdoc `-D warnings`, plus `demo`/`transport` smoke runs (no timing gates,
+  no expensive benchmark/sBPF in CI).
+- `scripts/demo.sh` (chmod +x) + `docs/demo-outline.md` for the two-minute
+  recording; `docs/interview-qa.md` answers the plan's interview questions.
+
+## Next action
+
+All milestones are complete. The user commits this release; a true clean-clone
+validation is covered by the CI workflow (`cargo test --release --locked` on a
+fresh checkout). No further implementation is planned within the initial scope.

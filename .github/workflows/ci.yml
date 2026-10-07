@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.91.1
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      # Correctness (no timing gates: shared runners are unsuitable for
+      # performance thresholds).
+      - run: cargo fmt --check
+      - run: cargo clippy --release --all-targets --locked -- -D warnings
+      - run: cargo test --release --locked
+      - run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --locked
+      # Smoke runs (fast, deterministic commands only; the expensive
+      # benchmark profiles and the sBPF experiment are explicit and out of CI).
+      - run: cargo run --release --locked -- demo
+      - run: cargo run --release --locked -- transport
