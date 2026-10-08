@@ -1,0 +1,66 @@
+{
+  "build": {
+    "profile": "release"
+  },
+  "dirty_patch": "results/patches/full-r1.patch",
+  "git_revision": "dd9d9719fc99782567fcb25b48f62041df7c54a7",
+  "hashes": {
+    "cargo_lock_sha256": "014f60ef471543c407d324586665e1a12423f909412cf0999508cef2f2daa373",
+    "cargo_toml_sha256": "56b037bdae1e1b8961754a485be9020a21a340c39286d68a9234bfe51068123c",
+    "config_sha256": "1f5ce2ea6ce94969d44de39f809679b8b2f9042ce0b4ebf3860e754aeef134a2",
+    "source_tree_sha256": "1331a236e4e6f4db56533ad6b8acff57d91694a4bdc61ad01f3200f89ee025f8"
+  },
+  "host": {
+    "arch": "aarch64",
+    "cpu": "Apple M4",
+    "os": "macos"
+  },
+  "note": "Host timings describe one implementation on one machine; not a universal ranking, not constant-time evidence, never converted to Solana compute units.",
+  "raw_rows": 173642,
+  "recorded_unix_s": 1791482852,
+  "run_id": "full-r1",
+  "sampling": {
+    "budget_seconds": 60,
+    "input_classes": [
+      "valid",
+      "corrupted",
+      "invalid_len"
+    ],
+    "message_lengths": [
+      32,
+      166,
+      1024
+    ],
+    "min_samples": 200,
+    "modes": [
+      "prepared",
+      "byte"
+    ],
+    "operations": [
+      "keygen",
+      "sign",
+      "verify",
+      "verify_strict",
+      "authorize"
+    ],
+    "samples": 1000,
+    "schemes": [
+      "ed25519",
+      "ml-dsa-44",
+      "ml-dsa-65",
+      "slh-dsa-sha2-128s"
+    ],
+    "warmup": 20
+  },
+  "status_counts": {
+    "failed": 0,
+    "ok": 180,
+    "partial": 0,
+    "skipped": 0
+  },
+  "toolchain": {
+    "cargo": "cargo 1.91.1 (ea2d97820 2025-10-10)",
+    "rustc": "rustc 1.91.1 (ed61e7d7e 2025-11-07)\nbinary: rustc\ncommit-hash: ed61e7d7e242494fb7057f2657300d9e77bb4fcb\ncommit-date: 2025-11-07\nhost: aarch64-apple-darwin\nrelease: 1.91.1\nLLVM version: 21.1.2"
+  },
+  "working_tree_dirty": true
+}

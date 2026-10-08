@@ -4,6 +4,13 @@
   "samples": 1000,
   "budget_seconds": 60,
   "min_samples": 200,
+  "operations": [
+    "keygen",
+    "sign",
+    "verify",
+    "verify_strict",
+    "authorize"
+  ],
   "message_lengths": [
     32,
     166,

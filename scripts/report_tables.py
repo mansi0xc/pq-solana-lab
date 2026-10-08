@@ -6,10 +6,11 @@ Usage:
   python3 scripts/report_tables.py check    [options]
 
 Options:
-  --raw       results/raw/full.csv
-  --summary   results/summaries/full.csv
+  --raw       results/raw/full-r1.csv
+  --summary   results/summaries/full-r1.csv
   --transport results/transport.json
   --staged    results/transport-staged.json
+  --repeats   full-r1,full-r2,full-r3    (independent runs for variability)
   --report    docs/report.md
   --out       results/tables
 
@@ -35,22 +36,28 @@ from analysis import (  # noqa: E402
     stats,
 )
 
-BLOCK_ORDER = ["host_primitives", "host_quartiles", "transport_direct", "transport_staged"]
+BLOCK_ORDER = [
+    "host_primitives",
+    "boundaries",
+    "host_quartiles",
+    "transport_direct",
+    "transport_staged",
+    "between_runs",
+]
 
 
-def _row(raw, summaries, scheme, op, mode, length, cls):
+def _cell(raw, summaries, scheme, op, mode, length, cls):
     key = (scheme, op, mode, length, cls)
     if key not in raw:
-        raise ValueError("missing raw samples for %s" % (key,))
-    s = stats(raw[key])
-    if key not in summaries:
-        raise ValueError("missing summary row for %s" % (key,))
-    return s
+        raise ValueError("missing valid raw samples for %s" % (key,))
+    if summaries.get(key, {}).get("status", "ok") != "ok":
+        raise ValueError("cannot publish non-ok case %s" % (key,))
+    return stats(raw[key])
 
 
 def render_host_primitives(raw, summaries, raw_path):
     lines = [
-        "_Source: run `full` (`configs/full.json`), mode `prepared`, input class "
+        "_Source: run `full-r1` (`configs/full.json`), mode `prepared`, input class "
         "`valid`, 166-byte messages; raw `%s`. Medians recomputed from raw samples._"
         % raw_path,
         "",
@@ -59,9 +66,9 @@ def render_host_primitives(raw, summaries, raw_path):
     ]
     rows = []
     for scheme in SCHEMES:
-        kg = _row(raw, summaries, scheme, "keygen", "n/a", "0", "n/a")
-        sg = _row(raw, summaries, scheme, "sign", "prepared", "166", "valid")
-        vf = _row(raw, summaries, scheme, "verify", "prepared", "166", "valid")
+        kg = _cell(raw, summaries, scheme, "keygen", "n/a", "0", "n/a")
+        sg = _cell(raw, summaries, scheme, "sign", "prepared", "166", "valid")
+        vf = _cell(raw, summaries, scheme, "verify", "prepared", "166", "valid")
         sizes = summaries[(scheme, "keygen", "n/a", "0", "n/a")]
         pk = int(sizes["public_key_bytes"])
         sig = int(sizes["signature_bytes"])
@@ -87,9 +94,44 @@ def render_host_primitives(raw, summaries, raw_path):
     return "\n".join(lines), rows
 
 
+BOUNDARY_SPECS = [
+    ("verify", "prepared", "166", "valid", "verify prepared"),
+    ("verify", "byte", "166", "valid", "verify byte"),
+    ("verify_strict", "prepared", "166", "valid", "strict verify prepared"),
+    ("verify_strict", "byte", "166", "valid", "strict verify byte"),
+    ("authorize", "authorizer", "166", "valid", "authorize (accept)"),
+    ("authorize", "authorizer", "166", "replay", "authorize (replay reject)"),
+]
+
+
+def render_boundaries(raw, summaries, raw_path):
+    header = "| Scheme | " + " | ".join(s[4] for s in BOUNDARY_SPECS) + " |"
+    sep = "| --- |" + " --- |" * len(BOUNDARY_SPECS)
+    lines = [
+        "_Source: run `full-r1` (`configs/full.json`), 166-byte messages; medians "
+        "recomputed from `%s`. `authorize` includes registry lookup, intent "
+        "decoding, environment/expiry policy, strict verification, and the atomic "
+        "nonce/ledger update; the reject row is a replay workload._" % raw_path,
+        "",
+        header,
+        sep,
+    ]
+    rows = []
+    for scheme in SCHEMES:
+        cells = []
+        row = {"scheme": scheme}
+        for op, mode, length, cls, label in BOUNDARY_SPECS:
+            s = _cell(raw, summaries, scheme, op, mode, length, cls)
+            cells.append(fmt_ns(s["median"]))
+            row[label.replace(" ", "_").replace("(", "").replace(")", "")] = s["median"]
+        lines.append("| %s | %s |" % (LABELS[scheme], " | ".join(cells)))
+        rows.append(row)
+    return "\n".join(lines), rows
+
+
 def render_host_quartiles(raw, raw_path):
     lines = [
-        "_Source: run `full` (`configs/full.json`), mode `prepared`, input class "
+        "_Source: run `full-r1` (`configs/full.json`), mode `prepared`, input class "
         "`valid`, 166-byte messages; raw `%s`. Quartiles recomputed from raw samples "
         "(linear interpolation); p95 omitted below 200 samples._" % raw_path,
         "",
@@ -105,7 +147,7 @@ def render_host_quartiles(raw, raw_path):
         ]:
             key = (scheme, op, mode, length, cls)
             if key not in raw:
-                raise ValueError("missing raw samples for %s" % (key,))
+                raise ValueError("missing valid raw samples for %s" % (key,))
             s = stats(raw[key])
             p95 = fmt_ns(s["p95"]) if s["n"] >= 200 else "—"
             lines.append(
@@ -194,10 +236,7 @@ def render_transport_staged(rows, staged_path):
     out = []
     for scheme in SCHEMES:
         for fmt in ["legacy", "v0", "v1"]:
-            r = next(
-                (x for x in rows if x["scheme"] == scheme and x["format"] == fmt),
-                None,
-            )
+            r = next((x for x in rows if x["scheme"] == scheme and x["format"] == fmt), None)
             if r is None:
                 raise ValueError("missing staged row %s %s" % (scheme, fmt))
             lines.append(
@@ -229,6 +268,63 @@ def render_transport_staged(rows, staged_path):
     return "\n".join(lines), out
 
 
+REPEAT_SPECS = [
+    ("keygen", "n/a", "0", "n/a", "keygen"),
+    ("sign", "prepared", "166", "valid", "sign 166 B"),
+    ("verify", "prepared", "166", "valid", "verify 166 B"),
+    ("verify_strict", "prepared", "166", "valid", "strict verify"),
+    ("authorize", "authorizer", "166", "valid", "authorize"),
+]
+
+
+def render_between_runs(run_ids, summary_paths):
+    if not run_ids:
+        raise ValueError("no repeat runs were given")
+    summaries = []
+    for run_id, path in zip(run_ids, summary_paths):
+        if not os.path.exists(path):
+            raise ValueError("missing repeat run %s (%s)" % (run_id, path))
+        summaries.append(load_summaries(path))
+    if len(run_ids) < 2:
+        raise ValueError("between-run variability needs at least two runs")
+
+    header = "| Scheme | operation | " + " | ".join(run_ids) + " | spread |"
+    sep = "| --- | --- |" + " --- |" * len(run_ids) + " --- |"
+    lines = [
+        "_Source: independent runs %s (`configs/full.json`), prepared/valid, "
+        "166-byte messages. Medians read from each run's summary; spread = "
+        "(max − min) / min._" % ", ".join("`%s`" % r for r in run_ids),
+        "",
+        header,
+        sep,
+    ]
+    rows = []
+    for scheme in SCHEMES:
+        for op, mode, length, cls, label in REPEAT_SPECS:
+            key = (scheme, op, mode, length, cls)
+            medians = []
+            for sm in summaries:
+                row = sm.get(key)
+                if row is None or not row.get("median_ns"):
+                    raise ValueError("missing median for %s in a repeat run" % (key,))
+                medians.append(int(row["median_ns"]))
+            spread = 0.0 if len(medians) < 2 else (max(medians) - min(medians)) * 100.0 / min(medians)
+            lines.append(
+                "| %s | %s | %s | %.1f%% |"
+                % (
+                    LABELS[scheme],
+                    label,
+                    " | ".join(fmt_ns(m) for m in medians),
+                    spread,
+                )
+            )
+            row = {"scheme": scheme, "operation": label, "spread_percent": round(spread, 2)}
+            for run_id, m in zip(run_ids, medians):
+                row["median_ns_%s" % run_id] = m
+            rows.append(row)
+    return "\n".join(lines), rows
+
+
 def compute_blocks(args):
     raw = load_raw(args.raw)
     summaries = load_summaries(args.summary)
@@ -236,24 +332,30 @@ def compute_blocks(args):
     staged = json.load(open(args.staged))
 
     hp_md, hp_rows = render_host_primitives(raw, summaries, args.raw)
+    bd_md, bd_rows = render_boundaries(raw, summaries, args.raw)
     hq_md, hq_rows = render_host_quartiles(raw, args.raw)
     td_md, td_rows = render_transport_direct(transport, args.transport)
     ts_md, ts_rows = render_transport_staged(staged, args.staged)
 
-    blocks = {
+    run_ids = [r for r in args.repeats.split(",") if r]
+    repeat_paths = ["results/summaries/%s.csv" % r for r in run_ids]
+    br_md, br_rows = render_between_runs(run_ids, repeat_paths)
+
+    return {
         "host_primitives": (hp_md, hp_rows),
+        "boundaries": (bd_md, bd_rows),
         "host_quartiles": (hq_md, hq_rows),
         "transport_direct": (td_md, td_rows),
         "transport_staged": (ts_md, ts_rows),
+        "between_runs": (br_md, br_rows),
     }
-    return blocks
 
 
 def write_csv(path, rows):
     if not rows:
         raise ValueError("refusing to write empty table %s" % path)
     with open(path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()), lineterminator="\n")
         w.writeheader()
         w.writerows(rows)
 
@@ -299,8 +401,7 @@ def do_check(args, blocks):
         committed = open(path).read().strip("\n") if os.path.exists(path) else "<missing>"
         if committed != md:
             problems.append("stale generated table: %s" % path)
-        embedded = extract_block(text, name)
-        if embedded.strip("\n") != md:
+        if extract_block(text, name).strip("\n") != md:
             problems.append("stale report block: %s" % name)
     if problems:
         sys.stderr.write("report is stale; rerun `report_tables.py generate`:\n")
@@ -314,10 +415,11 @@ def do_check(args, blocks):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("mode", choices=["generate", "check"])
-    ap.add_argument("--raw", default="results/raw/full.csv")
-    ap.add_argument("--summary", default="results/summaries/full.csv")
+    ap.add_argument("--raw", default="results/raw/full-r1.csv")
+    ap.add_argument("--summary", default="results/summaries/full-r1.csv")
     ap.add_argument("--transport", default="results/transport.json")
     ap.add_argument("--staged", default="results/transport-staged.json")
+    ap.add_argument("--repeats", default="full-r1,full-r2,full-r3")
     ap.add_argument("--report", default="docs/report.md")
     ap.add_argument("--out", default="results/tables")
     args = ap.parse_args()

@@ -85,24 +85,53 @@ fn run_transport() {
     println!("wrote {path} and {spath}");
 }
 
-fn run_benchmark(args: &[String]) {
-    let config_path = args
-        .iter()
-        .position(|a| a == "--config")
+fn arg_value(args: &[String], name: &str) -> Option<String> {
+    args.iter()
+        .position(|a| a == name)
         .and_then(|i| args.get(i + 1))
         .cloned()
         .or_else(|| {
+            let prefix = format!("{name}=");
             args.iter()
-                .find_map(|a| a.strip_prefix("--config=").map(String::from))
+                .find_map(|a| a.strip_prefix(&prefix).map(String::from))
         })
-        .unwrap_or_else(|| "configs/quick.json".to_string());
-    let config: BenchConfig = serde_json::from_str(
+}
+
+fn run_benchmark(args: &[String]) {
+    let config_path =
+        arg_value(args, "--config").unwrap_or_else(|| "configs/quick.json".to_string());
+    let mut config: BenchConfig = serde_json::from_str(
         &std::fs::read_to_string(&config_path)
             .unwrap_or_else(|e| panic!("read config {config_path}: {e}")),
     )
     .unwrap_or_else(|e| panic!("parse config {config_path}: {e}"));
+    if let Some(id) = arg_value(args, "--run-id") {
+        config.run_id = id;
+    }
+    let force = args.iter().any(|a| a == "--force");
 
-    let (raw, summaries) = bench::run(&config);
+    if let Err(e) = bench::validate(&config) {
+        eprintln!("invalid benchmark config {config_path}: {e}");
+        std::process::exit(2);
+    }
+
+    let meta_path = format!("results/{}.json", config.run_id);
+    if !force && std::path::Path::new(&meta_path).exists() {
+        eprintln!(
+            "run_id {:?} already has {meta_path}; choose a new --run-id or pass --force to overwrite",
+            config.run_id
+        );
+        std::process::exit(2);
+    }
+
+    // Provenance is captured *before* any result file is written, so this run's
+    // own outputs are never mistaken for pre-existing source changes.
+    let mut meta = pq_solana_lab::provenance::capture(&config.run_id, &config_path, &config);
+    if let Some(patch) = pq_solana_lab::provenance::write_dirty_patch(&config.run_id) {
+        meta["dirty_patch"] = serde_json::json!(patch);
+    }
+
+    let (raw, summaries) = bench::run(&config).expect("validated config");
 
     std::fs::create_dir_all("results/raw").expect("mkdir results/raw");
     std::fs::create_dir_all("results/summaries").expect("mkdir results/summaries");
@@ -111,22 +140,50 @@ fn run_benchmark(args: &[String]) {
         &format!("results/summaries/{}.csv", config.run_id),
         &summaries,
     );
-    write_metadata(&config);
+
+    meta["status_counts"] = status_counts(&summaries);
+    meta["raw_rows"] = serde_json::json!(raw.len());
+    std::fs::write(
+        &meta_path,
+        serde_json::to_string_pretty(&meta).expect("serialize metadata"),
+    )
+    .unwrap_or_else(|e| panic!("write {meta_path}: {e}"));
 
     print_summary_table(&summaries);
+    print_problems(&summaries);
+    println!(
+        "wrote results/raw/{0}.csv, results/summaries/{0}.csv, {1}",
+        config.run_id, meta_path
+    );
+}
+
+fn status_counts(rows: &[SummaryRow]) -> serde_json::Value {
+    let mut ok = 0;
+    let mut partial = 0;
+    let mut failed = 0;
+    let mut skipped = 0;
+    for r in rows {
+        match r.status.as_str() {
+            "ok" => ok += 1,
+            "partial" => partial += 1,
+            "failed" => failed += 1,
+            _ => skipped += 1,
+        }
+    }
+    serde_json::json!({ "ok": ok, "partial": partial, "failed": failed, "skipped": skipped })
 }
 
 fn write_raw_csv(path: &str, rows: &[RawSample]) {
     let mut out = Vec::new();
     writeln!(
         out,
-        "run_id,scheme,category,operation,mode,message_len,input_class,sample_index,elapsed_ns"
+        "run_id,scheme,category,operation,mode,message_len,input_class,sample_index,elapsed_ns,valid"
     )
     .unwrap();
     for r in rows {
         writeln!(
             out,
-            "{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{}",
             r.run_id,
             r.scheme,
             csv(&r.category),
@@ -135,7 +192,8 @@ fn write_raw_csv(path: &str, rows: &[RawSample]) {
             r.message_len,
             r.input_class,
             r.sample_index,
-            r.elapsed_ns
+            r.elapsed_ns,
+            u8::from(r.valid)
         )
         .unwrap();
     }
@@ -146,14 +204,14 @@ fn write_summary_csv(path: &str, rows: &[SummaryRow]) {
     let mut out = Vec::new();
     writeln!(
         out,
-        "run_id,scheme,category,operation,mode,message_len,input_class,sample_count,median_ns,q1_ns,q3_ns,p95_ns,public_key_bytes,signature_bytes,status"
+        "run_id,scheme,category,operation,mode,message_len,input_class,sample_count,valid_count,budget_limited,median_ns,q1_ns,q3_ns,p95_ns,public_key_bytes,signature_bytes,status,note"
     )
     .unwrap();
     for r in rows {
-        let p95 = r.p95_ns.map(|v| v.to_string()).unwrap_or_default();
+        let opt = |v: Option<u64>| v.map(|n| n.to_string()).unwrap_or_default();
         writeln!(
             out,
-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             r.run_id,
             r.scheme,
             csv(&r.category),
@@ -162,63 +220,55 @@ fn write_summary_csv(path: &str, rows: &[SummaryRow]) {
             r.message_len,
             r.input_class,
             r.sample_count,
-            r.median_ns,
-            r.q1_ns,
-            r.q3_ns,
-            p95,
+            r.valid_count,
+            u8::from(r.budget_limited),
+            opt(r.median_ns),
+            opt(r.q1_ns),
+            opt(r.q3_ns),
+            opt(r.p95_ns),
             r.public_key_bytes,
             r.signature_bytes,
-            r.status
+            r.status,
+            csv(&r.note)
         )
         .unwrap();
     }
     std::fs::write(path, out).unwrap_or_else(|e| panic!("write {path}: {e}"));
 }
 
-fn write_metadata(config: &BenchConfig) {
-    let git_rev = std::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_else(|_| "unknown".to_string());
-    let dirty = std::process::Command::new("git")
-        .args(["status", "--porcelain"])
-        .output()
-        .map(|o| !o.stdout.is_empty())
-        .unwrap_or(true);
-    let meta = serde_json::json!({
-        "run_id": config.run_id,
-        "recorded_unix_s": std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0),
-        "git_revision": git_rev,
-        "working_tree_dirty": dirty,
-        "os": std::env::consts::OS,
-        "arch": std::env::consts::ARCH,
-        "config": config,
-        "note": "Host timings describe one implementation on one machine; not a universal ranking, not constant-time evidence, never converted to Solana compute units.",
-    });
-    let path = format!("results/{}.json", config.run_id);
-    std::fs::write(
-        &path,
-        serde_json::to_string_pretty(&meta).expect("serialize metadata"),
-    )
-    .unwrap_or_else(|e| panic!("write {path}: {e}"));
-}
-
 fn print_summary_table(rows: &[SummaryRow]) {
     println!("summary (median ns):");
     for r in rows {
+        let median = r
+            .median_ns
+            .map(|m| m.to_string())
+            .unwrap_or_else(|| "-".to_string());
         println!(
-            "  {:<10} {:<8} {:<9} len={:<4} class={:<11} n={:<5} median={}",
+            "  {:<10} {:<13} {:<10} len={:<4} class={:<11} n={:<5}/{:<5} median={:<10} {}",
             r.scheme,
             r.operation,
             r.mode,
             r.message_len,
             r.input_class,
+            r.valid_count,
             r.sample_count,
-            r.median_ns
+            median,
+            r.status
+        );
+    }
+}
+
+fn print_problems(rows: &[SummaryRow]) {
+    let problems: Vec<&SummaryRow> = rows.iter().filter(|r| r.status != "ok").collect();
+    if problems.is_empty() {
+        println!("all {} cases ok", rows.len());
+        return;
+    }
+    println!("cases needing attention:");
+    for r in problems {
+        println!(
+            "  {:<10} {:<13} {:<10} len={:<4} class={:<11} status={} ({})",
+            r.scheme, r.operation, r.mode, r.message_len, r.input_class, r.status, r.note
         );
     }
 }

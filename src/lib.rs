@@ -5,4 +5,5 @@ pub mod authorization;
 pub mod bench;
 pub mod crypto;
 pub mod intent;
+pub mod provenance;
 pub mod transport;

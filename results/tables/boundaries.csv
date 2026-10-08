@@ -1,0 +1,5 @@
+scheme,verify_prepared,verify_byte,strict_verify_prepared,strict_verify_byte,authorize_accept,authorize_replay_reject
+ed25519,18542,21250,21167,23958,24125,23375
+ml-dsa-44,40125,49042,40167,49083,49334,49208
+ml-dsa-65,65875,79459,66000,79334,79958,79584
+slh-dsa-sha2-128s,490792,466730,511084,507709,501458,490792

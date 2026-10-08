@@ -11,10 +11,11 @@
 | M5: sBPF verifier experiment | Complete (reproducible blocker) | `fips204` ML-DSA-44 compiles for sBF but exceeds the 4,096-byte stack-frame check (`verify_internal` ~62 KB); no execution |
 | M6: Results and report | Complete; **revised in correction batch 1** | full profile: 94,545 raw rows + 100 summary rows; 3 plots; generated tables; report; AI-usage doc |
 | M7: Release | Complete; **revised in correction batch 1** | README; CI; short demo + separate benchmark pilot; demo outline; interview Q&A |
-| Correction batch 1 (reviewer findings on `71b171f`) | Complete (pending author review/commit) | v1 wire encoding fixed; staged protocol defined; report statistics regenerated; security wording corrected |
+| Correction batch 1 (reviewer findings on `71b171f`) | Complete (committed `dd9d971`) | v1 wire encoding fixed; staged protocol defined; report statistics regenerated; security wording corrected |
+| Correction batch 2 (benchmarking) | Complete (pending author review/commit) | `black_box` + result validation; four measurement boundaries; provenance capture; three independent full runs (`full-r1`–`full-r3`) |
 
 Counts in the historical sections below describe the state at each milestone;
-the current suite is **70 tests** (`cargo test --release --locked`, all green).
+the current suite is **78 tests** (`cargo test --release --locked`, all green).
 
 ## Evidence taxonomy
 
@@ -388,8 +389,47 @@ warnings`; `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --locked`; `cargo run
 --release --locked -- demo`; `cargo run --release --locked -- transport`;
 `python3 scripts/report_tables.py check`; `git diff --check`.
 
+## Correction batch 2 — benchmarking observability, boundaries, and repetitions
+
+Reviewer findings addressed:
+
+1. **Timed operations are observable and failures explicit.** The harness wraps
+   inputs and outputs in `std::hint::black_box` and validates each operation's
+   result *after* the second timestamp (key lengths; sign-then-verify; verdict
+   vs intended class; authorization accept/replay). Every case reports
+   `sample_count`, `valid_count`, `budget_limited`, and a `status`
+   (`ok`/`partial`/`failed`/`skipped`); an empty or all-invalid case reports no
+   times, never a successful zero. Allocation/randomness/key-expansion inclusion
+   is documented in `docs/methodology.md`.
+2. **Missing measurement boundaries added.** The harness now measures prepared-key
+   primitives, the serialized-byte adapter, `verify_strict` (the path
+   authorization uses), and complete `authorize` (registry lookup, decoding,
+   environment/expiry policy, strict verification, atomic nonce/ledger update).
+   Successful authorization samples use valid state progression (each request
+   consumes the next nonce); the replay class is a separate rejection workload.
+   Key reuse, message reuse, signing randomness, and rejection classes are
+   documented.
+3. **Independent repetitions with provenance.** Three independent full runs
+   (`full-r1`–`full-r3`, 180 cases / ~173,640 raw rows each) with unique run
+   identifiers and no overwrite. Before writing outputs each run captures the
+   revision, dirty-tree patch (`results/patches/<id>.patch`), SHA-256 hashes of
+   the source tree / `Cargo.toml` / `Cargo.lock` / config, toolchain and host
+   identity, and sampling settings. Report §5.6 shows between-run spread.
+4. **New tests.** `tests/bench.rs` covers statistics (quantile reference),
+   configuration validation, empty/failed status handling, output consistency,
+   authorization state progression, and budget-limited marking.
+5. **Documentation.** `docs/methodology.md` rewritten; `results/provenance.md`
+   updated; the pre-review `full`/`quick` runs are marked historical.
+
+Commands run for this batch: `cargo fmt --check`; `cargo clippy --release
+--all-targets --locked -- -D warnings`; `cargo test --release --locked` (78
+tests); `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --locked`; `cargo run
+--release --locked -- demo`; `cargo run --release --locked -- transport`;
+`python3 scripts/plot_results.py …`; `python3 scripts/report_tables.py
+check`; `git diff --check`.
+
 ## Next action
 
-Correction batch 1 is complete and awaits the author's review and commit. Batch
-2 (benchmark observability, measurement boundaries, independent runs) begins
-only after that checkpoint.
+Correction batches 1 and 2 are complete and await the author's review and
+commit. Batch 3 (sBPF loader outcome, a controlled implementation comparison,
+and a technical note) begins only after that checkpoint.

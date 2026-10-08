@@ -129,7 +129,17 @@
       "Shell(python3 scripts/report_tables.py generate)",
       "Shell(python3 scripts/report_tables.py check)",
       "Shell(python3 scripts/plot_results.py results/raw/full.csv results/summaries/full.csv results/transport.json results/plots)",
-      "Shell(shasum:*)"
+      "Shell(shasum:*)",
+      "Shell(cat > \"$COMMANDCODE_SCRATCHPAD/validate.json\" <<'EOF' { \"run_id\": \"validate\", \"warmup\": 3, \"samples\": 120, \"budget_seconds\": 10, \"min_samples\": 200, \"operations\": [\"keygen\",\"sign\",\"verify\",\"verify_strict\",\"authorize\"], \"message_lengths\": [166], \"schemes\": [\"ed25519\",\"ml-dsa-44\"], \"modes\": [\"prepared\",\"byte\"], \"input_classes\": [\"valid\",\"corrupted\",\"invalid_len\"] } EOF cd /Users/mansitibrewal/chronicles/pq-solana-lab && cargo run --release --locked -- benchmark --config \"$COMMANDCODE_SCRATCHPAD/validate.json\" 2>&1 | tail -40)",
+      "Shell(cd /Users/mansitibrewal/chronicles/pq-solana-lab && rm -f results/raw/validate.csv results/summaries/validate.csv results/validate.json results/patches/validate.patch && rmdir results/patches 2>/dev/null; cargo fmt && cargo test --release --locked --test bench 2>&1 | tail -6)",
+      "Shell(for:*)",
+      "Shell(do:*)",
+      "Shell(exit:*)",
+      "Shell(done:*)",
+      "Shell(ls:*)",
+      "Shell(python3 -c  import json for r in ['full-r1','full-r2','full-r3']: d=json.load(open('results/%s.json'%r)) print(r, d['git_revision'][:8], 'dirty=',d['working_tree_dirty'], 'rows=',d['raw_rows'], d['status_counts']) )",
+      "Shell(python3 scripts/plot_results.py results/raw/full-r1.csv results/summaries/full-r1.csv results/transport.json results/plots)",
+      "Shell(cd /Users/mansitibrewal/chronicles/pq-solana-lab && before=$(shasum results/transport.json | awk '{print $1}') && cargo run --release --locked -- demo >/dev/null 2>&1 && echo \"DEMO OK\" && cargo run --release --locked -- transport >/dev/null 2>&1 && after=$(shasum results/transport.json | awk '{print $1}') && [ \"$before\" = \"$after\" ] && echo \"TRANSPORT deterministic OK\" && echo \"=== diff --check ===\" && git diff --check && echo clean && echo \"=== validate rejects bad run-id ===\" && (cargo run --release --locked -- benchmark --config \"$COMMANDCODE_SCRATCHPAD/validate.json\" 2>&1 | tail -2))"
     ],
     "deny": [],
     "defaultMode": "default"

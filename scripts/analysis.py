@@ -23,10 +23,17 @@ LABELS = {
 
 
 def load_raw(path):
-    """Return {(scheme, op, mode, len, class): [elapsed_ns, ...]}."""
+    """Return {(scheme, op, mode, len, class): [valid elapsed_ns, ...]}.
+
+    Only samples whose operation produced the expected result are included, so
+    the recomputed statistics match the harness. Rows written before the
+    `valid` column existed are treated as valid.
+    """
     groups = defaultdict(list)
     with open(path, newline="") as f:
         for row in csv.DictReader(f):
+            if row.get("valid", "1") not in ("1", "true", "True"):
+                continue
             key = (
                 row["scheme"],
                 row["operation"],
@@ -36,8 +43,26 @@ def load_raw(path):
             )
             groups[key].append(int(row["elapsed_ns"]))
     if not groups:
-        raise ValueError("no raw samples in %s" % path)
+        raise ValueError("no valid raw samples in %s" % path)
     return groups
+
+
+def load_raw_counts(path):
+    """Return {(scheme, op, mode, len, class): (total, valid)}."""
+    counts = defaultdict(lambda: [0, 0])
+    with open(path, newline="") as f:
+        for row in csv.DictReader(f):
+            key = (
+                row["scheme"],
+                row["operation"],
+                row["mode"],
+                row["message_len"],
+                row["input_class"],
+            )
+            counts[key][0] += 1
+            if row.get("valid", "1") in ("1", "true", "True"):
+                counts[key][1] += 1
+    return {k: tuple(v) for k, v in counts.items()}
 
 
 def load_summaries(path):

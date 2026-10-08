@@ -102,44 +102,64 @@ independently recomputes the summaries from the raw samples.
 ### 5.1 Host primitives (prepared, valid, 166-byte messages)
 
 <!-- BEGIN GENERATED: host_primitives -->
-_Source: run `full` (`configs/full.json`), mode `prepared`, input class `valid`, 166-byte messages; raw `results/raw/full.csv`. Medians recomputed from raw samples._
+_Source: run `full-r1` (`configs/full.json`), mode `prepared`, input class `valid`, 166-byte messages; raw `results/raw/full-r1.csv`. Medians recomputed from raw samples._
 
 | Scheme | keygen | sign (166 B) | verify (166 B) | pubkey (B) | signature (B) |
 | --- | --- | --- | --- | --- | --- |
-| Ed25519 | 10.9 µs | 8.8 µs | 18.7 µs | 32 | 64 |
-| ML-DSA-44 | 76.6 µs | 127.6 µs | 40.3 µs | 1312 | 2420 |
-| ML-DSA-65 | 130.8 µs | 228.8 µs | 66.0 µs | 1952 | 3309 |
-| SLH-DSA-SHA2-128s | 66.6 ms (n=889) | 511.0 ms (n=116) | 581.8 µs | 32 | 7856 |
+| Ed25519 | 8.2 µs | 8.9 µs | 18.5 µs | 32 | 64 |
+| ML-DSA-44 | 76.3 µs | 127.3 µs | 40.1 µs | 1312 | 2420 |
+| ML-DSA-65 | 131.3 µs | 227.1 µs | 65.9 µs | 1952 | 3309 |
+| SLH-DSA-SHA2-128s | 65.9 ms (n=910) | 504.1 ms (n=119) | 490.8 µs | 32 | 7856 |
 <!-- END GENERATED: host_primitives -->
 
-### 5.2 Host quartiles (prepared, valid, 166-byte messages)
+### 5.2 Measurement boundaries
+
+The four boundaries requested by the review are measured separately: prepared-key
+primitives, the serialized-byte adapter, the strict Ed25519 verification used by
+authorization, and complete authorization (registry lookup, decoding, policy,
+strict verification, and the atomic nonce/ledger update). The authorization
+`accept` row uses valid state progression (each request consumes the next
+nonce); the `replay reject` row is a rejection workload, not a rejected success.
+
+<!-- BEGIN GENERATED: boundaries -->
+_Source: run `full-r1` (`configs/full.json`), 166-byte messages; medians recomputed from `results/raw/full-r1.csv`. `authorize` includes registry lookup, intent decoding, environment/expiry policy, strict verification, and the atomic nonce/ledger update; the reject row is a replay workload._
+
+| Scheme | verify prepared | verify byte | strict verify prepared | strict verify byte | authorize (accept) | authorize (replay reject) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Ed25519 | 18.5 µs | 21.2 µs | 21.2 µs | 24.0 µs | 24.1 µs | 23.4 µs |
+| ML-DSA-44 | 40.1 µs | 49.0 µs | 40.2 µs | 49.1 µs | 49.3 µs | 49.2 µs |
+| ML-DSA-65 | 65.9 µs | 79.5 µs | 66.0 µs | 79.3 µs | 80.0 µs | 79.6 µs |
+| SLH-DSA-SHA2-128s | 490.8 µs | 466.7 µs | 511.1 µs | 507.7 µs | 501.5 µs | 490.8 µs |
+<!-- END GENERATED: boundaries -->
+
+### 5.3 Host quartiles (prepared, valid, 166-byte messages)
 
 <!-- BEGIN GENERATED: host_quartiles -->
-_Source: run `full` (`configs/full.json`), mode `prepared`, input class `valid`, 166-byte messages; raw `results/raw/full.csv`. Quartiles recomputed from raw samples (linear interpolation); p95 omitted below 200 samples._
+_Source: run `full-r1` (`configs/full.json`), mode `prepared`, input class `valid`, 166-byte messages; raw `results/raw/full-r1.csv`. Quartiles recomputed from raw samples (linear interpolation); p95 omitted below 200 samples._
 
 | Scheme | operation | n | median | Q1 | Q3 | p95 |
 | --- | --- | --- | --- | --- | --- | --- |
-| Ed25519 | keygen | 1000 | 10.9 µs | 10.8 µs | 11.4 µs | 16.0 µs |
-| Ed25519 | sign | 1000 | 8.8 µs | 8.3 µs | 8.9 µs | 9.4 µs |
-| Ed25519 | verify | 1000 | 18.7 µs | 18.6 µs | 18.7 µs | 18.9 µs |
-| ML-DSA-44 | keygen | 1000 | 76.6 µs | 76.3 µs | 76.8 µs | 78.6 µs |
-| ML-DSA-44 | sign | 1000 | 127.6 µs | 95.1 µs | 223.1 µs | 444.6 µs |
-| ML-DSA-44 | verify | 1000 | 40.3 µs | 40.2 µs | 40.4 µs | 42.8 µs |
-| ML-DSA-65 | keygen | 1000 | 130.8 µs | 130.5 µs | 131.3 µs | 135.8 µs |
-| ML-DSA-65 | sign | 1000 | 228.8 µs | 141.7 µs | 361.1 µs | 676.3 µs |
-| ML-DSA-65 | verify | 1000 | 66.0 µs | 65.8 µs | 66.2 µs | 71.8 µs |
-| SLH-DSA-SHA2-128s | keygen | 889 | 66.6 ms | 66.4 ms | 67.4 ms | 71.7 ms |
-| SLH-DSA-SHA2-128s | sign | 116 | 511.0 ms | 508.8 ms | 516.4 ms | — |
-| SLH-DSA-SHA2-128s | verify | 1000 | 581.8 µs | 561.1 µs | 607.7 µs | 692.3 µs |
+| Ed25519 | keygen | 1000 | 8.2 µs | 8.2 µs | 8.3 µs | 9.3 µs |
+| Ed25519 | sign | 1000 | 8.9 µs | 8.9 µs | 8.9 µs | 9.0 µs |
+| Ed25519 | verify | 1000 | 18.5 µs | 18.5 µs | 18.6 µs | 18.7 µs |
+| ML-DSA-44 | keygen | 1000 | 76.3 µs | 76.0 µs | 76.6 µs | 78.8 µs |
+| ML-DSA-44 | sign | 1000 | 127.3 µs | 93.8 µs | 223.0 µs | 412.9 µs |
+| ML-DSA-44 | verify | 1000 | 40.1 µs | 40.0 µs | 40.2 µs | 40.9 µs |
+| ML-DSA-65 | keygen | 1000 | 131.3 µs | 130.9 µs | 131.9 µs | 310.1 µs |
+| ML-DSA-65 | sign | 1000 | 227.1 µs | 140.3 µs | 357.9 µs | 705.7 µs |
+| ML-DSA-65 | verify | 1000 | 65.9 µs | 65.7 µs | 66.0 µs | 66.6 µs |
+| SLH-DSA-SHA2-128s | keygen | 910 | 65.9 ms | 65.6 ms | 66.1 ms | 66.5 ms |
+| SLH-DSA-SHA2-128s | sign | 119 | 504.1 ms | 503.7 ms | 504.4 ms | — |
+| SLH-DSA-SHA2-128s | verify | 1000 | 490.8 µs | 490.3 µs | 493.0 µs | 498.2 µs |
 <!-- END GENERATED: host_quartiles -->
 
-The reported signing distribution is wide (ML-DSA-44 median 127.6 µs with Q1
-95.1 µs, Q3 223.1 µs) because ML-DSA signing is rejection-sampled: each
-signature takes a variable number of loop iterations. Reporting the first
-quartile as if it were the median understates the typical cost; the generator
-and its consistency check prevent that regression.
+The signing distribution for ML-DSA-44/65 is wide: the first quartile sits well
+below the median because ML-DSA signing is rejection-sampled, so each signature
+takes a variable number of loop iterations. Reporting the first quartile as if
+it were the median understates the typical cost; §5.3's generated table and its
+consistency check prevent that regression.
 
-### 5.3 Transport, direct inclusion (serialized)
+### 5.4 Transport, direct inclusion (serialized)
 
 <!-- BEGIN GENERATED: transport_direct -->
 _Source: `results/transport.json` — actually serialized `solana-sdk` 5.0.0 transactions; legacy/v0 use bincode, v1 uses the SDK `wincode` wire encoder. Evidence type: `serialized`. Limits: legacy/v0 = 1,232 B, v1 = 4,096 B._
@@ -172,7 +192,7 @@ authorization-state account (4 accounts) and sets `compute_unit_limit` and
 the legacy/v0 budget even when registered; registration removes exactly the
 public-key bytes. Evidence type: `serialized`.
 
-### 5.4 Transport, staged upload (modeled)
+### 5.5 Transport, staged upload (modeled)
 
 <!-- BEGIN GENERATED: transport_staged -->
 _Source: `results/transport-staged.json` — a **model** (each transaction serialized, lifecycle not executed). Includes init/write/seal/authorize transaction bytes and session metadata + signature storage; excludes key registration, account rent, cleanup, and compute._
@@ -201,7 +221,41 @@ registration, and cleanup are excluded. Staging makes each transaction fit but
 increases total transported bytes and adds on-chain state; it does not reduce
 verification cost.
 
-### 5.5 Verifier feasibility (blocked before execution)
+### 5.6 Between-run variability
+
+Three independent full runs were recorded (`full-r1`, `full-r2`, `full-r3`) with
+unique run identifiers and per-run provenance. The table shows each run's median
+and the spread `(max − min) / min`; within-run spread is the interquartile range
+in §5.3.
+
+<!-- BEGIN GENERATED: between_runs -->
+_Source: independent runs `full-r1`, `full-r2`, `full-r3` (`configs/full.json`), prepared/valid, 166-byte messages. Medians read from each run's summary; spread = (max − min) / min._
+
+| Scheme | operation | full-r1 | full-r2 | full-r3 | spread |
+| --- | --- | --- | --- | --- | --- |
+| Ed25519 | keygen | 8.2 µs | 9.0 µs | 9.0 µs | 10.1% |
+| Ed25519 | sign 166 B | 8.9 µs | 8.9 µs | 8.9 µs | 0.0% |
+| Ed25519 | verify 166 B | 18.5 µs | 18.6 µs | 18.5 µs | 0.7% |
+| Ed25519 | strict verify | 21.2 µs | 21.2 µs | 21.2 µs | 0.4% |
+| Ed25519 | authorize | 24.1 µs | 24.1 µs | 24.2 µs | 0.2% |
+| ML-DSA-44 | keygen | 76.3 µs | 76.4 µs | 76.4 µs | 0.1% |
+| ML-DSA-44 | sign 166 B | 127.3 µs | 126.1 µs | 126.0 µs | 1.0% |
+| ML-DSA-44 | verify 166 B | 40.1 µs | 40.2 µs | 40.3 µs | 0.4% |
+| ML-DSA-44 | strict verify | 40.2 µs | 40.1 µs | 40.2 µs | 0.3% |
+| ML-DSA-44 | authorize | 49.3 µs | 49.4 µs | 49.4 µs | 0.1% |
+| ML-DSA-65 | keygen | 131.3 µs | 131.8 µs | 131.4 µs | 0.3% |
+| ML-DSA-65 | sign 166 B | 227.1 µs | 227.4 µs | 227.4 µs | 0.1% |
+| ML-DSA-65 | verify 166 B | 65.9 µs | 65.9 µs | 66.1 µs | 0.3% |
+| ML-DSA-65 | strict verify | 66.0 µs | 65.9 µs | 66.0 µs | 0.1% |
+| ML-DSA-65 | authorize | 80.0 µs | 80.1 µs | 80.0 µs | 0.2% |
+| SLH-DSA-SHA2-128s | keygen | 65.9 ms | 66.2 ms | 66.4 ms | 0.8% |
+| SLH-DSA-SHA2-128s | sign 166 B | 504.1 ms | 504.9 ms | 505.8 ms | 0.3% |
+| SLH-DSA-SHA2-128s | verify 166 B | 490.8 µs | 514.9 µs | 502.0 µs | 4.9% |
+| SLH-DSA-SHA2-128s | strict verify | 511.1 µs | 463.3 µs | 524.2 µs | 13.2% |
+| SLH-DSA-SHA2-128s | authorize | 501.5 µs | 503.8 µs | 505.2 µs | 0.7% |
+<!-- END GENERATED: between_runs -->
+
+### 5.7 Verifier feasibility (blocked before execution)
 
 `fips204` 0.4.6 ML-DSA-44 verification compiles for sBPF but is rejected by the
 4,096-byte stack-frame check. `verify_internal` has a ~62 KB frame,

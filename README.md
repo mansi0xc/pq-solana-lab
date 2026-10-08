@@ -32,19 +32,25 @@ converted into compute units; no universal infeasibility is claimed.
 
 ```sh
 rustup toolchain install 1.91.1   # pinned via rust-toolchain.toml
-cargo test --release --locked                                 # 70 tests
+cargo test --release --locked                                 # 78 tests
 cargo run --release --locked -- demo                          # sign/verify + authorization accept/reject
 cargo run --release --locked -- transport                     # serialized legacy/v0/v1 + staged model
-cargo run --release --locked -- benchmark --config configs/quick.json   # ~2-3 min pilot
-cargo run --release --locked -- benchmark --config configs/full.json    # full profile (SLH-DSA dominates)
+cargo run --release --locked -- benchmark --config configs/quick.json --run-id quick-r1   # ~2-3 min pilot
+cargo run --release --locked -- benchmark --config configs/full.json  --run-id full-r1    # full profile (SLH-DSA dominates)
 ```
+
+Each run needs a unique `--run-id` (it refuses to overwrite an existing run
+unless `--force` is given). Before writing results it records provenance —
+revision, dirty-tree patch, source/manifest/lockfile/config hashes, toolchain,
+host, and sampling settings — in `results/<run-id>.json`; raw samples go to
+`results/raw/<run-id>.csv` and summaries to `results/summaries/<run-id>.csv`.
 
 Python analysis environment (isolated, documented in `scripts/requirements.txt`):
 
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r scripts/requirements.txt
-python3 scripts/plot_results.py results/raw/full.csv results/summaries/full.csv results/transport.json results/plots
+python3 scripts/plot_results.py results/raw/full-r1.csv results/summaries/full-r1.csv results/transport.json results/plots
 python3 scripts/report_tables.py generate   # writes results/tables/* and the report tables
 python3 scripts/report_tables.py check      # fails if the published tables are stale
 ```
@@ -78,9 +84,20 @@ verify/key validation/prepared keys. A canonical 166-byte intent
 (`src/intent.rs`) and a local authorizer (`src/authorization.rs`) bind requests
 to registered keys, environment, expiry, and monotonic nonces; weak Ed25519
 keys are rejected and authorization verifies strictly. `src/bench.rs` measures
-primitives with documented boundaries; `src/transport.rs` serializes real
-transactions (bincode for legacy/v0, the SDK's `wincode` for v1) and a staged
-upload protocol; `experiments/sbpf-verifier/` is the bounded on-chain experiment.
+primitives and complete authorization with documented boundaries, `black_box`
+optimization barriers, and post-timing result validation; `src/transport.rs`
+serializes real transactions (bincode for legacy/v0, the SDK's `wincode` for v1)
+and a staged upload protocol; `src/provenance.rs` captures per-run provenance;
+`experiments/sbpf-verifier/` is the bounded on-chain experiment.
+
+## Measurement boundaries
+
+`cargo run --release -- benchmark` reports four distinct boundaries: prepared-key
+primitives, the serialized-byte adapter, the strict Ed25519 verification used by
+authorization, and complete authorization (registry lookup, decoding, policy,
+strict verification, and the atomic nonce/ledger update — with valid state
+progression for accepts and a separate replay-rejection workload). See
+`docs/methodology.md`.
 
 ## Evidence types
 

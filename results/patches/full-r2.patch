@@ -1,0 +1,2063 @@
+diff --git a/.commandcode/settings.json b/.commandcode/settings.json
+index 5e7da07..9b8aa0f 100644
+--- a/.commandcode/settings.json
++++ b/.commandcode/settings.json
+@@ -129,7 +129,13 @@
+       "Shell(python3 scripts/report_tables.py generate)",
+       "Shell(python3 scripts/report_tables.py check)",
+       "Shell(python3 scripts/plot_results.py results/raw/full.csv results/summaries/full.csv results/transport.json results/plots)",
+-      "Shell(shasum:*)"
++      "Shell(shasum:*)",
++      "Shell(cat > \"$COMMANDCODE_SCRATCHPAD/validate.json\" <<'EOF' { \"run_id\": \"validate\", \"warmup\": 3, \"samples\": 120, \"budget_seconds\": 10, \"min_samples\": 200, \"operations\": [\"keygen\",\"sign\",\"verify\",\"verify_strict\",\"authorize\"], \"message_lengths\": [166], \"schemes\": [\"ed25519\",\"ml-dsa-44\"], \"modes\": [\"prepared\",\"byte\"], \"input_classes\": [\"valid\",\"corrupted\",\"invalid_len\"] } EOF cd /Users/mansitibrewal/chronicles/pq-solana-lab && cargo run --release --locked -- benchmark --config \"$COMMANDCODE_SCRATCHPAD/validate.json\" 2>&1 | tail -40)",
++      "Shell(cd /Users/mansitibrewal/chronicles/pq-solana-lab && rm -f results/raw/validate.csv results/summaries/validate.csv results/validate.json results/patches/validate.patch && rmdir results/patches 2>/dev/null; cargo fmt && cargo test --release --locked --test bench 2>&1 | tail -6)",
++      "Shell(for:*)",
++      "Shell(do:*)",
++      "Shell(exit:*)",
++      "Shell(done:*)"
+     ],
+     "deny": [],
+     "defaultMode": "default"
+diff --git a/configs/full.json b/configs/full.json
+index 58764db..2b3a992 100644
+--- a/configs/full.json
++++ b/configs/full.json
+@@ -4,6 +4,13 @@
+   "samples": 1000,
+   "budget_seconds": 60,
+   "min_samples": 200,
++  "operations": [
++    "keygen",
++    "sign",
++    "verify",
++    "verify_strict",
++    "authorize"
++  ],
+   "message_lengths": [
+     32,
+     166,
+@@ -24,4 +31,4 @@
+     "corrupted",
+     "invalid_len"
+   ]
+-}
+\ No newline at end of file
++}
+diff --git a/configs/quick.json b/configs/quick.json
+index 2f2d6cf..e5d63da 100644
+--- a/configs/quick.json
++++ b/configs/quick.json
+@@ -4,6 +4,13 @@
+   "samples": 300,
+   "budget_seconds": 15,
+   "min_samples": 200,
++  "operations": [
++    "keygen",
++    "sign",
++    "verify",
++    "verify_strict",
++    "authorize"
++  ],
+   "message_lengths": [
+     32,
+     166,
+@@ -24,4 +31,4 @@
+     "corrupted",
+     "invalid_len"
+   ]
+-}
+\ No newline at end of file
++}
+diff --git a/docs/methodology.md b/docs/methodology.md
+index a23a330..ca2b7ea 100644
+--- a/docs/methodology.md
++++ b/docs/methodology.md
+@@ -2,81 +2,132 @@
+ 
+ This documents the measurement protocol behind `cargo run --release --
+ benchmark --config configs/<profile>.json`. The numbers describe one
+-implementation (`ed25519-dalek` 3.0.0, `fips204` 0.4.6) on one machine
+-(Apple M4, macOS 27.0.1); they are not a universal ranking, not constant-time
+-evidence, and are never converted into Solana compute units.
++implementation (`ed25519-dalek` 3.0.0, `fips204` 0.4.6, `fips205` 0.4.1) on one
++machine (Apple M4, macOS 27.0.1); they are not a universal ranking, not
++constant-time evidence, and are never converted into Solana compute units.
+ 
+ ## Measurement boundaries
+ 
+ | Operation | What is timed | What is excluded |
+ | --- | --- | --- |
+-| `keygen` | fresh key generation per iteration | none (keygen is self-contained) |
+-| `sign`, mode `prepared` | signing with a key parsed once via `Scheme::prepare_signer` | key reconstruction/allocation |
+-| `sign`, mode `byte` | signing via the serialized-byte adapter (includes per-call secret-key parse + allocation) | nothing inside the loop besides the adapter call |
+-| `verify`, mode `prepared` | verification with a key parsed once via `Scheme::prepare_verifier` | key reconstruction/allocation |
+-| `verify`, mode `byte` | verification via the byte adapter (includes per-call public-key parse + allocation) | nothing besides the adapter call |
+-| complete authorization (registry lookup, decoding, policy, nonce) | *not yet measured* | this harness measures primitives only; an end-to-end authorization boundary is planned as a separate measurement |
+-
+-For `sign`/`verify`, keys and messages are prepared before the timed loop, and
+-a fixture signature is produced and checked *once, outside* the loop. The
+-timed loop only calls the operation under test.
++| `keygen` | fresh key generation per iteration | nothing (keygen is self-contained) |
++| `sign`, mode `prepared` | signing with a key parsed once via `Scheme::prepare_signer` | key reconstruction before the loop |
++| `sign`, mode `byte` | signing via the serialized-byte adapter (includes per-call secret-key parse and key expansion) | nothing besides the adapter call |
++| `verify`, mode `prepared` | verification with a key parsed once via `Scheme::prepare_verifier` | key reconstruction before the loop |
++| `verify`, mode `byte` | verification via the byte adapter (includes per-call public-key parse) | nothing besides the adapter call |
++| `verify_strict`, both modes | the strict path `authorization` uses (Ed25519 additionally rejects weak keys and small-order components) | as above |
++| `authorize` | registry lookup, intent decoding, environment/expiry policy, strict verification, and the atomic nonce/ledger update | fixture signing (done in batches between timed samples); the wall-clock cost of that signing still counts against the case budget |
++
++## What is included in a timed interval
++
++- **Included:** the operation call and everything it does internally. For
++  ML-DSA/SLH-DSA signing that includes internal randomness acquisition (hedged
++  signing) and key expansion; `PreparedSigner::sign` returns a `Vec`, so
++  **output allocation is inside** the timed interval (allocation is not claimed
++  to be excluded).
++- **Excluded:** fixture construction, key/message preparation, warm-up, result
++  validation, and — for `authorize` — signing the fixtures.
++
++## Observable operations
++
++Timing is `Instant::now()` → operation → `Instant::now()`. The operation's
++result is passed through `std::hint::black_box` (as are the inputs) so the call
++cannot be optimized away, and it is **validated after** the second timestamp:
++
++- `keygen` — the produced key pair has the scheme's public/secret lengths.
++- `sign` — the produced signature has the scheme's signature length and verifies
++  under the key.
++- `verify`/`verify_strict` — the verdict matches the fixture's intended class.
++- `authorize` — the request is accepted (or, for the replay class, rejected with
++  a nonce mismatch).
++
++Each raw row records whether the result was expected. A case whose results are
++unexpected gets an explicit `status` (`partial` / `failed`) and a note; an empty
++or all-invalid case reports **no** times (`null`), never a successful zero. A
++case that stopped early because of the per-case budget is flagged
++`budget_limited`.
+ 
+ ## Message cases
+ 
+ 32 bytes (short), 166 bytes (the actual encoded withdrawal intent, see
+-`docs/encoding.md`), and 1,024 bytes. The same key is reused within a run for
+-all message lengths — these are warm single-key timings, not rotating-key
+-performance, and are labeled as such.
+-
+-## Input classes (verify only)
+-
+-- `valid` — a correctly signed message; expected verdict `Ok(true)`.
+-- `corrupted` — a correctly sized signature with one byte flipped; expected
+-  verdict `Ok(false)`. Classified by construction, not inferred from the
+-  verdict (see the verification-result contract in `src/crypto.rs`).
+-- `invalid_len` — a truncated signature; expected verdict `Err(InvalidLength)`.
+-
+-`sign` has only the `valid` class (signing always produces a valid signature).
++`docs/encoding.md`), and 1,024 bytes. For `authorize` the message is the encoded
++intent (166 bytes). The **same key and the same message bytes are reused** for
++every sample in a case — these are warm single-key timings, not rotating-key
++performance.
++
++## Signing randomness and signature reuse
++
++- Ed25519 signing is deterministic (RFC 8032 pure): every sample produces the
++  same signature.
++- ML-DSA-44/65 and SLH-DSA use randomized ("hedged") signing, so each signature
++  differs; the measured distribution therefore includes the rejection-sampling
++  spread (visible as the wide ML-DSA sign quartiles).
++- For `verify` the same signature bytes are reused across samples (one fixture
++  per class). For `sign` no signature is reused. For `authorize`, each accepted
++  request uses a **fresh signature over the next nonce** (valid state
++  progression), never a replay.
++
++## Key reuse
++
++One key pair per scheme is generated outside the loop and reused for all
++message lengths and modes. `keygen` is the only operation that measures fresh
++key generation, and it does so per iteration.
++
++## Input classes
++
++- Verify: `valid` (expected `Ok(true)`), `corrupted` (one signature byte
++  flipped; expected `Ok(false)`), `invalid_len` (truncated signature; expected
++  `Err`). Classes are **constructed**, not inferred from the verdict (see the
++  verification-result contract in `src/crypto.rs`).
++- Authorization: `valid` (state-advancing accept) and `replay` (resubmission of
++  an already-consumed nonce; expected nonce-mismatch rejection).
+ 
+ ## Sampling and statistics
+ 
+ - **Warm-up**: `warmup` untimed iterations before each timed case.
+ - **Samples**: up to `samples` iterations per case, bounded by
+-  `budget_seconds` of wall-clock per case (the loop stops early and records the
+-  actual count when the budget is hit).
++  `budget_seconds` of wall-clock per case.
+ - **Statistics**: median and first/third quartiles (linear-interpolation
+-  quantile); p95 only when the actual sample count is at least `min_samples`
+-  (project rule: ≥ 200). Smaller counts are reported without p95, never
+-  presented as if they supported it.
++  quantile); p95 only when the actual valid sample count is at least
++  `min_samples` (project rule: ≥ 200).
++- **Repetitions**: the principal comparison uses three independent full runs
++  (`full-r1`–`full-r3`) with unique run identifiers; within-run spread is the
++  interquartile range, between-run variability is reported as
++  `(max − min) / min` of the per-run medians (see `docs/report.md` §5.6).
++
++## Configuration validation
++
++`bench::validate` rejects an empty/unknown scheme, mode, operation, or input
++class, a non-positive sample/min-sample count or budget, an empty message-length
++list, and a `run_id` that is not `[A-Za-z0-9_-]+`. `run_id` uniqueness is
++enforced at the CLI (a run refuses to overwrite an existing metadata file unless
++`--force` is given), so previous runs are never silently replaced.
+ 
+ ## Signing modes recorded
+ 
+-Ed25519: deterministic RFC 8032 (pure, no context). ML-DSA-44: FIPS 204 pure
+-mode, empty context, randomized ("hedged") signing — recorded in
++Ed25519: deterministic RFC 8032 (pure, no context). ML-DSA-44/65: FIPS 204 pure
++mode, empty context, randomized ("hedged") signing. SLH-DSA-SHA2-128s: FIPS 205
++pure mode, empty context, hedged signing — recorded in
+ `results/environment.json` and per-run metadata.
+ 
+-## Reproducibility
++## Reproducibility and provenance
+ 
+-Dependencies are pinned and the toolchain is pinned (`rust-toolchain.toml`).
+-Each run writes a metadata file (`results/<run_id>.json`) with the exact
+-config, source revision (`git rev-parse HEAD`), and working-tree dirty status,
+-so any row can be traced back to the code that produced it. Raw samples go to
+-`results/raw/<run_id>.csv`; summaries to `results/summaries/<run_id>.csv`.
++Dependencies and toolchain are pinned. Before writing any output, each run
++captures provenance into `results/<run_id>.json`: the source revision, whether
++the tree was dirty (with a recoverable patch saved to
++`results/patches/<run_id>.patch`), SHA-256 hashes of `Cargo.toml`, `Cargo.lock`,
++the config file, and every `src/**/*.rs` file, plus the compiler/cargo versions,
++host OS/arch/CPU, and the sampling settings. Provenance is captured **before**
++the run's own outputs are written, so result files are never mistaken for
++source changes. Raw samples go to `results/raw/<run_id>.csv`; summaries to
++`results/summaries/<run_id>.csv`.
+ 
+ ## Timing resolution
+ 
+-`std::time::Instant` is used. On this host its resolution is finer than the
+-operations being measured (the smallest median reported is on the order of
+-microseconds for Ed25519), but very short operations still carry timer-call
+-overhead. Timings are wall-clock observations, not cycle counts.
+-
+-## Sub-resolution timings
+-
+-Some measured values are below the timer's effective resolution and report as
+-`0` ns. In particular, `verify` with the `invalid_len` class in `prepared` mode
+-is a plain length check (a few nanoseconds) that returns an error before any
+-cryptographic work, so its median is `0`. Read such values as "at or below
+-measurement resolution", never as "free". The contrast with `byte` mode is the
+-real observation: the byte path still pays public-key reconstruction (point
+-decompression / ML-DSA key expansion) before rejecting a wrong-length
+-signature, while the prepared path does not.
++`std::time::Instant` is used. Its resolution is finer than the operations being
++measured (the smallest meaningful medians are on the order of microseconds), but
++very short operations still carry timer-call overhead. Timings are wall-clock
++observations, not cycle counts. Sub-resolution cases are reported honestly: for
++example, `verify` with `invalid_len` in `prepared` mode is a length check that
++returns before any cryptographic work and reports as `0` ns. Read such values as
++"at or below measurement resolution", never as "free".
+diff --git a/docs/report.md b/docs/report.md
+index 4c0a972..c3328a8 100644
+--- a/docs/report.md
++++ b/docs/report.md
+@@ -112,7 +112,19 @@ _Source: run `full` (`configs/full.json`), mode `prepared`, input class `valid`,
+ | SLH-DSA-SHA2-128s | 66.6 ms (n=889) | 511.0 ms (n=116) | 581.8 µs | 32 | 7856 |
+ <!-- END GENERATED: host_primitives -->
+ 
+-### 5.2 Host quartiles (prepared, valid, 166-byte messages)
++### 5.2 Measurement boundaries
++
++The four boundaries requested by the review are measured separately: prepared-key
++primitives, the serialized-byte adapter, the strict Ed25519 verification used by
++authorization, and complete authorization (registry lookup, decoding, policy,
++strict verification, and the atomic nonce/ledger update). The authorization
++`accept` row uses valid state progression (each request consumes the next
++nonce); the `replay reject` row is a rejection workload, not a rejected success.
++
++<!-- BEGIN GENERATED: boundaries -->
++<!-- END GENERATED: boundaries -->
++
++### 5.3 Host quartiles (prepared, valid, 166-byte messages)
+ 
+ <!-- BEGIN GENERATED: host_quartiles -->
+ _Source: run `full` (`configs/full.json`), mode `prepared`, input class `valid`, 166-byte messages; raw `results/raw/full.csv`. Quartiles recomputed from raw samples (linear interpolation); p95 omitted below 200 samples._
+@@ -139,7 +151,7 @@ signature takes a variable number of loop iterations. Reporting the first
+ quartile as if it were the median understates the typical cost; the generator
+ and its consistency check prevent that regression.
+ 
+-### 5.3 Transport, direct inclusion (serialized)
++### 5.4 Transport, direct inclusion (serialized)
+ 
+ <!-- BEGIN GENERATED: transport_direct -->
+ _Source: `results/transport.json` — actually serialized `solana-sdk` 5.0.0 transactions; legacy/v0 use bincode, v1 uses the SDK `wincode` wire encoder. Evidence type: `serialized`. Limits: legacy/v0 = 1,232 B, v1 = 4,096 B._
+@@ -172,7 +184,7 @@ authorization-state account (4 accounts) and sets `compute_unit_limit` and
+ the legacy/v0 budget even when registered; registration removes exactly the
+ public-key bytes. Evidence type: `serialized`.
+ 
+-### 5.4 Transport, staged upload (modeled)
++### 5.5 Transport, staged upload (modeled)
+ 
+ <!-- BEGIN GENERATED: transport_staged -->
+ _Source: `results/transport-staged.json` — a **model** (each transaction serialized, lifecycle not executed). Includes init/write/seal/authorize transaction bytes and session metadata + signature storage; excludes key registration, account rent, cleanup, and compute._
+@@ -201,7 +213,17 @@ registration, and cleanup are excluded. Staging makes each transaction fit but
+ increases total transported bytes and adds on-chain state; it does not reduce
+ verification cost.
+ 
+-### 5.5 Verifier feasibility (blocked before execution)
++### 5.6 Between-run variability
++
++Three independent full runs were recorded (`full-r1`, `full-r2`, `full-r3`) with
++unique run identifiers and per-run provenance. The table shows each run's median
++and the spread `(max − min) / min`; within-run spread is the interquartile range
++in §5.3.
++
++<!-- BEGIN GENERATED: between_runs -->
++<!-- END GENERATED: between_runs -->
++
++### 5.7 Verifier feasibility (blocked before execution)
+ 
+ `fips204` 0.4.6 ML-DSA-44 verification compiles for sBPF but is rejected by the
+ 4,096-byte stack-frame check. `verify_internal` has a ~62 KB frame,
+diff --git a/results/provenance.md b/results/provenance.md
+index 2154a3a..a9247a1 100644
+--- a/results/provenance.md
++++ b/results/provenance.md
+@@ -1,25 +1,33 @@
+ # Result provenance
+ 
+-## Current artifacts
++## Current artifacts (Batch 2 campaign)
+ 
+ | Artifact | Produced by | Evidence type |
+ | --- | --- | --- |
+-| `raw/full.csv`, `summaries/full.csv`, `full.json` | `cargo run --release -- benchmark --config configs/full.json` | measured (host wall-clock) |
+-| `raw/quick.csv`, `summaries/quick.csv`, `quick.json` | `cargo run --release -- benchmark --config configs/quick.json` | measured (host wall-clock) |
+-| `transport.json` | `cargo run --release -- transport` | serialized (bincode v0/legacy, `wincode` v1) |
++| `raw/full-r1.csv`, `summaries/full-r1.csv`, `full-r1.json`, `patches/full-r1.patch` | `cargo run --release -- benchmark --config configs/full.json --run-id full-r1` | measured (host wall-clock) |
++| `raw/full-r2.csv`, `summaries/full-r2.csv`, `full-r2.json`, `patches/full-r2.patch` | same, `--run-id full-r2` | measured (host wall-clock) |
++| `raw/full-r3.csv`, `summaries/full-r3.csv`, `full-r3.json`, `patches/full-r3.patch` | same, `--run-id full-r3` | measured (host wall-clock) |
++| `transport.json` | `cargo run --release -- transport` | serialized (bincode legacy/v0, `wincode` v1) |
+ | `transport-staged.json` | `cargo run --release -- transport` | modeled (components serialized, lifecycle not executed) |
+ | `tables/*.csv`, `tables/*.md` | `python3 scripts/report_tables.py generate` | derived from the above |
+ | `plots/*.png` | `python3 scripts/plot_results.py …` | derived from the above |
+-| `environment.json` | hand-written at M1 | metadata |
++| `environment.json` | hand-written at M1, updated for `wincode` | metadata |
++
++The three `full-r*` runs are independent repetitions of the same frozen config,
++with unique run identifiers and per-run provenance recorded **before** outputs
++were written. The report's tables are generated from `full-r1`; §5.6 shows
++between-run variability across all three.
+ 
+ ## Superseded artifacts (kept for provenance)
+ 
+ | Artifact | Why superseded |
+ | --- | --- |
++| `raw/full.csv`, `summaries/full.csv`, `full.json` | produced by the pre-review harness (no `verify_strict`/`authorize` boundaries, no result validation, no `valid` column) on 2026-10-06. Kept as the historical M6 run; superseded by the `full-r*` campaign. |
++| `raw/quick.csv`, `summaries/quick.csv`, `quick.json` | historical M3 pilot from the same pre-review harness. Kept. |
+ | `transport.bincode-v1-superseded.json` | v1 rows used `bincode`, which is not the v1 wire format. Replaced by `transport.json` (v1 via `wincode`). |
+-| `transport-staged.chunk-model-superseded.json` | the staged model counted raw signature bytes with a 1-byte init payload and no protocol framing. Replaced by `transport-staged.json` (serialized `Init`/`Write`/`Seal`/`Authorize`). |
++| `transport-staged.chunk-model-superseded.json` | the staged model counted raw signature bytes with a 1-byte init payload and no protocol framing. Replaced by `transport-staged.json`. |
+ 
+-The raw and summary benchmark files were **not** superseded: the samples are
+-unchanged. The error was in the report's derived table, which took first-quartile
+-values and labeled them medians; the tables are now regenerated from the raw
+-samples (see `docs/progress.md`, correction batch 1).
++The historical raw and summary files were **not** rewritten: their samples are
++unchanged and the report's earlier error was in a derived table, not in the
++samples. `tests/report_consistency.rs` checks every raw/summary pair (old and
++new schema) against the raw samples.
+diff --git a/scripts/analysis.py b/scripts/analysis.py
+index 44ca77d..35a215c 100644
+--- a/scripts/analysis.py
++++ b/scripts/analysis.py
+@@ -23,10 +23,17 @@ LABELS = {
+ 
+ 
+ def load_raw(path):
+-    """Return {(scheme, op, mode, len, class): [elapsed_ns, ...]}."""
++    """Return {(scheme, op, mode, len, class): [valid elapsed_ns, ...]}.
++
++    Only samples whose operation produced the expected result are included, so
++    the recomputed statistics match the harness. Rows written before the
++    `valid` column existed are treated as valid.
++    """
+     groups = defaultdict(list)
+     with open(path, newline="") as f:
+         for row in csv.DictReader(f):
++            if row.get("valid", "1") not in ("1", "true", "True"):
++                continue
+             key = (
+                 row["scheme"],
+                 row["operation"],
+@@ -36,10 +43,28 @@ def load_raw(path):
+             )
+             groups[key].append(int(row["elapsed_ns"]))
+     if not groups:
+-        raise ValueError("no raw samples in %s" % path)
++        raise ValueError("no valid raw samples in %s" % path)
+     return groups
+ 
+ 
++def load_raw_counts(path):
++    """Return {(scheme, op, mode, len, class): (total, valid)}."""
++    counts = defaultdict(lambda: [0, 0])
++    with open(path, newline="") as f:
++        for row in csv.DictReader(f):
++            key = (
++                row["scheme"],
++                row["operation"],
++                row["mode"],
++                row["message_len"],
++                row["input_class"],
++            )
++            counts[key][0] += 1
++            if row.get("valid", "1") in ("1", "true", "True"):
++                counts[key][1] += 1
++    return {k: tuple(v) for k, v in counts.items()}
++
++
+ def load_summaries(path):
+     """Return {(scheme, op, mode, len, class): row dict}."""
+     rows = {}
+diff --git a/scripts/report_tables.py b/scripts/report_tables.py
+index 34491a6..d5d358f 100644
+--- a/scripts/report_tables.py
++++ b/scripts/report_tables.py
+@@ -6,10 +6,11 @@ Usage:
+   python3 scripts/report_tables.py check    [options]
+ 
+ Options:
+-  --raw       results/raw/full.csv
+-  --summary   results/summaries/full.csv
++  --raw       results/raw/full-r1.csv
++  --summary   results/summaries/full-r1.csv
+   --transport results/transport.json
+   --staged    results/transport-staged.json
++  --repeats   full-r1,full-r2,full-r3    (independent runs for variability)
+   --report    docs/report.md
+   --out       results/tables
+ 
+@@ -35,22 +36,28 @@ from analysis import (  # noqa: E402
+     stats,
+ )
+ 
+-BLOCK_ORDER = ["host_primitives", "host_quartiles", "transport_direct", "transport_staged"]
++BLOCK_ORDER = [
++    "host_primitives",
++    "boundaries",
++    "host_quartiles",
++    "transport_direct",
++    "transport_staged",
++    "between_runs",
++]
+ 
+ 
+-def _row(raw, summaries, scheme, op, mode, length, cls):
++def _cell(raw, summaries, scheme, op, mode, length, cls):
+     key = (scheme, op, mode, length, cls)
+     if key not in raw:
+-        raise ValueError("missing raw samples for %s" % (key,))
+-    s = stats(raw[key])
+-    if key not in summaries:
+-        raise ValueError("missing summary row for %s" % (key,))
+-    return s
++        raise ValueError("missing valid raw samples for %s" % (key,))
++    if summaries.get(key, {}).get("status", "ok") != "ok":
++        raise ValueError("cannot publish non-ok case %s" % (key,))
++    return stats(raw[key])
+ 
+ 
+ def render_host_primitives(raw, summaries, raw_path):
+     lines = [
+-        "_Source: run `full` (`configs/full.json`), mode `prepared`, input class "
++        "_Source: run `full-r1` (`configs/full.json`), mode `prepared`, input class "
+         "`valid`, 166-byte messages; raw `%s`. Medians recomputed from raw samples._"
+         % raw_path,
+         "",
+@@ -59,9 +66,9 @@ def render_host_primitives(raw, summaries, raw_path):
+     ]
+     rows = []
+     for scheme in SCHEMES:
+-        kg = _row(raw, summaries, scheme, "keygen", "n/a", "0", "n/a")
+-        sg = _row(raw, summaries, scheme, "sign", "prepared", "166", "valid")
+-        vf = _row(raw, summaries, scheme, "verify", "prepared", "166", "valid")
++        kg = _cell(raw, summaries, scheme, "keygen", "n/a", "0", "n/a")
++        sg = _cell(raw, summaries, scheme, "sign", "prepared", "166", "valid")
++        vf = _cell(raw, summaries, scheme, "verify", "prepared", "166", "valid")
+         sizes = summaries[(scheme, "keygen", "n/a", "0", "n/a")]
+         pk = int(sizes["public_key_bytes"])
+         sig = int(sizes["signature_bytes"])
+@@ -87,9 +94,44 @@ def render_host_primitives(raw, summaries, raw_path):
+     return "\n".join(lines), rows
+ 
+ 
++BOUNDARY_SPECS = [
++    ("verify", "prepared", "166", "valid", "verify prepared"),
++    ("verify", "byte", "166", "valid", "verify byte"),
++    ("verify_strict", "prepared", "166", "valid", "strict verify prepared"),
++    ("verify_strict", "byte", "166", "valid", "strict verify byte"),
++    ("authorize", "authorizer", "166", "valid", "authorize (accept)"),
++    ("authorize", "authorizer", "166", "replay", "authorize (replay reject)"),
++]
++
++
++def render_boundaries(raw, summaries, raw_path):
++    header = "| Scheme | " + " | ".join(s[4] for s in BOUNDARY_SPECS) + " |"
++    sep = "| --- |" + " --- |" * len(BOUNDARY_SPECS)
++    lines = [
++        "_Source: run `full-r1` (`configs/full.json`), 166-byte messages; medians "
++        "recomputed from `%s`. `authorize` includes registry lookup, intent "
++        "decoding, environment/expiry policy, strict verification, and the atomic "
++        "nonce/ledger update; the reject row is a replay workload._" % raw_path,
++        "",
++        header,
++        sep,
++    ]
++    rows = []
++    for scheme in SCHEMES:
++        cells = []
++        row = {"scheme": scheme}
++        for op, mode, length, cls, label in BOUNDARY_SPECS:
++            s = _cell(raw, summaries, scheme, op, mode, length, cls)
++            cells.append(fmt_ns(s["median"]))
++            row[label.replace(" ", "_").replace("(", "").replace(")", "")] = s["median"]
++        lines.append("| %s | %s |" % (LABELS[scheme], " | ".join(cells)))
++        rows.append(row)
++    return "\n".join(lines), rows
++
++
+ def render_host_quartiles(raw, raw_path):
+     lines = [
+-        "_Source: run `full` (`configs/full.json`), mode `prepared`, input class "
++        "_Source: run `full-r1` (`configs/full.json`), mode `prepared`, input class "
+         "`valid`, 166-byte messages; raw `%s`. Quartiles recomputed from raw samples "
+         "(linear interpolation); p95 omitted below 200 samples._" % raw_path,
+         "",
+@@ -105,7 +147,7 @@ def render_host_quartiles(raw, raw_path):
+         ]:
+             key = (scheme, op, mode, length, cls)
+             if key not in raw:
+-                raise ValueError("missing raw samples for %s" % (key,))
++                raise ValueError("missing valid raw samples for %s" % (key,))
+             s = stats(raw[key])
+             p95 = fmt_ns(s["p95"]) if s["n"] >= 200 else "—"
+             lines.append(
+@@ -194,10 +236,7 @@ def render_transport_staged(rows, staged_path):
+     out = []
+     for scheme in SCHEMES:
+         for fmt in ["legacy", "v0", "v1"]:
+-            r = next(
+-                (x for x in rows if x["scheme"] == scheme and x["format"] == fmt),
+-                None,
+-            )
++            r = next((x for x in rows if x["scheme"] == scheme and x["format"] == fmt), None)
+             if r is None:
+                 raise ValueError("missing staged row %s %s" % (scheme, fmt))
+             lines.append(
+@@ -229,6 +268,63 @@ def render_transport_staged(rows, staged_path):
+     return "\n".join(lines), out
+ 
+ 
++REPEAT_SPECS = [
++    ("keygen", "n/a", "0", "n/a", "keygen"),
++    ("sign", "prepared", "166", "valid", "sign 166 B"),
++    ("verify", "prepared", "166", "valid", "verify 166 B"),
++    ("verify_strict", "prepared", "166", "valid", "strict verify"),
++    ("authorize", "authorizer", "166", "valid", "authorize"),
++]
++
++
++def render_between_runs(run_ids, summary_paths):
++    if not run_ids:
++        raise ValueError("no repeat runs were given")
++    summaries = []
++    for run_id, path in zip(run_ids, summary_paths):
++        if not os.path.exists(path):
++            raise ValueError("missing repeat run %s (%s)" % (run_id, path))
++        summaries.append(load_summaries(path))
++    if len(run_ids) < 2:
++        raise ValueError("between-run variability needs at least two runs")
++
++    header = "| Scheme | operation | " + " | ".join(run_ids) + " | spread |"
++    sep = "| --- | --- |" + " --- |" * len(run_ids) + " --- |"
++    lines = [
++        "_Source: independent runs %s (`configs/full.json`), prepared/valid, "
++        "166-byte messages. Medians read from each run's summary; spread = "
++        "(max − min) / min._" % ", ".join("`%s`" % r for r in run_ids),
++        "",
++        header,
++        sep,
++    ]
++    rows = []
++    for scheme in SCHEMES:
++        for op, mode, length, cls, label in REPEAT_SPECS:
++            key = (scheme, op, mode, length, cls)
++            medians = []
++            for sm in summaries:
++                row = sm.get(key)
++                if row is None or not row.get("median_ns"):
++                    raise ValueError("missing median for %s in a repeat run" % (key,))
++                medians.append(int(row["median_ns"]))
++            spread = 0.0 if len(medians) < 2 else (max(medians) - min(medians)) * 100.0 / min(medians)
++            lines.append(
++                "| %s | %s | %s | %.1f%% |"
++                % (
++                    LABELS[scheme],
++                    label,
++                    " | ".join(fmt_ns(m) for m in medians),
++                    spread,
++                )
++            )
++            row = {"scheme": scheme, "operation": label, "spread_percent": round(spread, 2)}
++            for run_id, m in zip(run_ids, medians):
++                row["median_ns_%s" % run_id] = m
++            rows.append(row)
++    return "\n".join(lines), rows
++
++
+ def compute_blocks(args):
+     raw = load_raw(args.raw)
+     summaries = load_summaries(args.summary)
+@@ -236,17 +332,23 @@ def compute_blocks(args):
+     staged = json.load(open(args.staged))
+ 
+     hp_md, hp_rows = render_host_primitives(raw, summaries, args.raw)
++    bd_md, bd_rows = render_boundaries(raw, summaries, args.raw)
+     hq_md, hq_rows = render_host_quartiles(raw, args.raw)
+     td_md, td_rows = render_transport_direct(transport, args.transport)
+     ts_md, ts_rows = render_transport_staged(staged, args.staged)
+ 
+-    blocks = {
++    run_ids = [r for r in args.repeats.split(",") if r]
++    repeat_paths = ["results/summaries/%s.csv" % r for r in run_ids]
++    br_md, br_rows = render_between_runs(run_ids, repeat_paths)
++
++    return {
+         "host_primitives": (hp_md, hp_rows),
++        "boundaries": (bd_md, bd_rows),
+         "host_quartiles": (hq_md, hq_rows),
+         "transport_direct": (td_md, td_rows),
+         "transport_staged": (ts_md, ts_rows),
++        "between_runs": (br_md, br_rows),
+     }
+-    return blocks
+ 
+ 
+ def write_csv(path, rows):
+@@ -299,8 +401,7 @@ def do_check(args, blocks):
+         committed = open(path).read().strip("\n") if os.path.exists(path) else "<missing>"
+         if committed != md:
+             problems.append("stale generated table: %s" % path)
+-        embedded = extract_block(text, name)
+-        if embedded.strip("\n") != md:
++        if extract_block(text, name).strip("\n") != md:
+             problems.append("stale report block: %s" % name)
+     if problems:
+         sys.stderr.write("report is stale; rerun `report_tables.py generate`:\n")
+@@ -314,10 +415,11 @@ def do_check(args, blocks):
+ def main():
+     ap = argparse.ArgumentParser()
+     ap.add_argument("mode", choices=["generate", "check"])
+-    ap.add_argument("--raw", default="results/raw/full.csv")
+-    ap.add_argument("--summary", default="results/summaries/full.csv")
++    ap.add_argument("--raw", default="results/raw/full-r1.csv")
++    ap.add_argument("--summary", default="results/summaries/full-r1.csv")
+     ap.add_argument("--transport", default="results/transport.json")
+     ap.add_argument("--staged", default="results/transport-staged.json")
++    ap.add_argument("--repeats", default="full-r1,full-r2,full-r3")
+     ap.add_argument("--report", default="docs/report.md")
+     ap.add_argument("--out", default="results/tables")
+     args = ap.parse_args()
+diff --git a/src/bench.rs b/src/bench.rs
+index 4706547..fd36669 100644
+--- a/src/bench.rs
++++ b/src/bench.rs
+@@ -1,23 +1,79 @@
+-//! Reproducible benchmark harness for primitive operations.
++//! Reproducible benchmark harness for signature primitives and complete
++//! authorization.
+ //!
+-//! Measurement boundaries (see `docs/methodology.md`):
+-//! - `mode = "prepared"`: key parsed once via `Scheme::prepare_*`; the timed
+-//!   loop calls the already-parsed key directly (no reconstruction).
+-//! - `mode = "byte"`: the timed loop goes through the serialized-byte adapter,
+-//!   including per-call key reconstruction and allocation.
+-//! - `operation = "keygen"`: fresh key generation per iteration.
+-//! - Complete authorization is measured separately (M3.2), not here.
++//! # Measurement boundaries
+ //!
+-//! Valid fixtures are produced and verified *once, outside* the timed loop;
+-//! the loop only measures the operation under test. Setup and I/O are kept
+-//! out of timing loops.
++//! Each operation is measured at a distinct boundary (see
++//! `docs/methodology.md`):
++//!
++//! - `keygen` — fresh key generation per iteration.
++//! - `sign` / `verify`, mode `prepared` — keys parsed once via
++//!   `Scheme::prepare_*`; the timed loop calls the parsed key directly.
++//! - `sign` / `verify`, mode `byte` — the serialized-byte adapter, which
++//!   reconstructs the typed key (and, for ML-DSA, expands it) on every call.
++//! - `verify_strict` — the strict-verification path the authorizer uses (for
++//!   Ed25519 it additionally rejects weak keys and small-order components).
++//! - `authorize` — complete authorization: registry lookup, intent decoding,
++//!   policy checks (environment, expiry), strict verification, and atomic
++//!   nonce/ledger update.
++//!
++//! # Observable timed operations
++//!
++//! The timed interval is `Instant::now()` → operation → `Instant::now()`. The
++//! operation's *result* is consumed with `std::hint::black_box` and validated
++//! **after** the second timestamp, so a failing or optimized-away operation can
++//! never be reported as a fast success. Inputs are black-boxed too.
++//!
++//! Every timed case records the raw elapsed time and whether the result was the
++//! expected one; summary rows carry `sample_count`, `valid_count`,
++//! `budget_limited`, an explicit `status` (`ok` / `partial` / `failed` /
++//! `skipped`) and a note. An empty or all-invalid case reports `null` times,
++//! never a successful zero.
++//!
++//! # What is included / excluded
++//!
++//! - Included in timing: the operation call itself and whatever that call does
++//!   internally (for ML-DSA/SLH-DSA signing that includes internal randomness
++//!   acquisition and key expansion; `PreparedSigner::sign` returns a `Vec`, so
++//!   output allocation is inside the interval).
++//! - Excluded from timing but performed for validation: result checks,
++//!   fixture construction, key/message preparation, warm-up.
++//!
++//! Cryptographic algorithms are not modified.
+ 
++use std::hint::black_box;
+ use std::time::{Duration, Instant};
+ 
+ use serde::{Deserialize, Serialize};
+ 
+-use crate::crypto::Scheme;
+-use crate::intent::WithdrawalIntent;
++use crate::authorization::{AuthError, Authorizer, Environment, KeyRegistry, RegisteredKey};
++use crate::crypto::{CryptoError, KeyPair, PreparedSigner, PreparedVerifier, Scheme};
++use crate::intent::{WithdrawalIntent, INTENT_LEN};
++
++/// Operations the harness can measure. `keygen` runs once per scheme; `sign`
++/// and the verify operations run per (mode, message length); `authorize` runs
++/// once per scheme.
++pub const OPERATIONS: [&str; 5] = ["keygen", "sign", "verify", "verify_strict", "authorize"];
++/// Key-handling modes for sign/verify.
++pub const MODES: [&str; 2] = ["prepared", "byte"];
++/// Verify input classes (fixtures are constructed, not inferred from verdicts).
++pub const INPUT_CLASSES: [&str; 3] = ["valid", "corrupted", "invalid_len"];
++/// Authorization classes: state-advancing successes and replay rejections.
++pub const AUTHORIZE_CLASSES: [&str; 2] = ["valid", "replay"];
++
++/// Fixed fixture parameters for the authorization boundary.
++pub const AUTHORIZE_KEY_ID: u32 = 7;
++pub const AUTHORIZE_NETWORK: [u8; 32] = [0x0a; 32];
++pub const AUTHORIZE_PROGRAM: [u8; 32] = [0x0b; 32];
++pub const AUTHORIZE_ASSET: [u8; 32] = [0x0c; 32];
++pub const AUTHORIZE_RECIPIENT: [u8; 32] = [0x0d; 32];
++pub const AUTHORIZE_SLOT: u64 = 500;
++pub const AUTHORIZE_EXPIRY: u64 = 1000;
++pub const AUTHORIZE_AMOUNT: u64 = 100;
++
++/// Fixtures are signed in batches between timed samples so key-independent
++/// signing cost is amortized outside the timed interval.
++const AUTHORIZE_BATCH: usize = 64;
+ 
+ #[derive(Debug, Clone, Deserialize, Serialize)]
+ pub struct BenchConfig {
+@@ -26,12 +82,18 @@ pub struct BenchConfig {
+     pub samples: usize,
+     pub budget_seconds: u64,
+     pub min_samples: usize,
++    #[serde(default = "default_operations")]
++    pub operations: Vec<String>,
+     pub message_lengths: Vec<usize>,
+     pub schemes: Vec<String>,
+     pub modes: Vec<String>,
+     pub input_classes: Vec<String>,
+ }
+ 
++fn default_operations() -> Vec<String> {
++    OPERATIONS.iter().map(|s| s.to_string()).collect()
++}
++
+ #[derive(Debug, Clone, Serialize)]
+ pub struct RawSample {
+     pub run_id: String,
+@@ -43,6 +105,8 @@ pub struct RawSample {
+     pub input_class: String,
+     pub sample_index: usize,
+     pub elapsed_ns: u64,
++    /// Whether the operation produced the expected result for this case.
++    pub valid: bool,
+ }
+ 
+ #[derive(Debug, Clone, Serialize)]
+@@ -55,18 +119,124 @@ pub struct SummaryRow {
+     pub message_len: usize,
+     pub input_class: String,
+     pub sample_count: usize,
+-    pub median_ns: u64,
+-    pub q1_ns: u64,
+-    pub q3_ns: u64,
++    pub valid_count: usize,
++    pub budget_limited: bool,
++    pub median_ns: Option<u64>,
++    pub q1_ns: Option<u64>,
++    pub q3_ns: Option<u64>,
+     pub p95_ns: Option<u64>,
+     pub public_key_bytes: usize,
+     pub signature_bytes: usize,
+     pub status: String,
++    pub note: String,
++}
++
++/// Configuration problems that must stop a run rather than silently produce a
++/// misleading table.
++#[derive(Debug, PartialEq, Eq)]
++pub enum ConfigError {
++    EmptyField(&'static str),
++    ZeroField(&'static str),
++    EmptyList(&'static str),
++    UnknownValue { field: &'static str, value: String },
++    InvalidRunId(String),
++}
++
++impl std::fmt::Display for ConfigError {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        match self {
++            ConfigError::EmptyField(field) => write!(f, "{field} must not be empty"),
++            ConfigError::ZeroField(field) => write!(f, "{field} must be greater than zero"),
++            ConfigError::EmptyList(field) => write!(f, "{field} must not be empty"),
++            ConfigError::UnknownValue { field, value } => {
++                write!(f, "unknown {field}: {value}")
++            }
++            ConfigError::InvalidRunId(id) => write!(
++                f,
++                "run_id {id:?} must be non-empty and contain only [A-Za-z0-9_-]"
++            ),
++        }
++    }
++}
++
++impl std::error::Error for ConfigError {}
++
++/// Validate a configuration before running it.
++pub fn validate(config: &BenchConfig) -> Result<(), ConfigError> {
++    if config.run_id.is_empty()
++        || !config
++            .run_id
++            .chars()
++            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
++    {
++        return Err(ConfigError::InvalidRunId(config.run_id.clone()));
++    }
++    if config.samples == 0 {
++        return Err(ConfigError::ZeroField("samples"));
++    }
++    if config.budget_seconds == 0 {
++        return Err(ConfigError::ZeroField("budget_seconds"));
++    }
++    if config.min_samples == 0 {
++        return Err(ConfigError::ZeroField("min_samples"));
++    }
++    if config.operations.is_empty() {
++        return Err(ConfigError::EmptyList("operations"));
++    }
++    for op in &config.operations {
++        if !OPERATIONS.contains(&op.as_str()) {
++            return Err(ConfigError::UnknownValue {
++                field: "operation",
++                value: op.clone(),
++            });
++        }
++    }
++    if config.modes.is_empty() {
++        return Err(ConfigError::EmptyList("modes"));
++    }
++    for mode in &config.modes {
++        if !MODES.contains(&mode.as_str()) {
++            return Err(ConfigError::UnknownValue {
++                field: "mode",
++                value: mode.clone(),
++            });
++        }
++    }
++    if config.message_lengths.is_empty() {
++        return Err(ConfigError::EmptyList("message_lengths"));
++    }
++    if config.message_lengths.contains(&0) {
++        return Err(ConfigError::ZeroField("message_length"));
++    }
++    if config.schemes.is_empty() {
++        return Err(ConfigError::EmptyList("schemes"));
++    }
++    for scheme in &config.schemes {
++        if scheme_from_name(scheme).is_none() {
++            return Err(ConfigError::UnknownValue {
++                field: "scheme",
++                value: scheme.clone(),
++            });
++        }
++    }
++    if config.input_classes.is_empty() {
++        return Err(ConfigError::EmptyList("input_classes"));
++    }
++    for class in &config.input_classes {
++        if !INPUT_CLASSES.contains(&class.as_str()) {
++            return Err(ConfigError::UnknownValue {
++                field: "input_class",
++                value: class.clone(),
++            });
++        }
++    }
++    Ok(())
+ }
+ 
+ /// Run the benchmark described by `config`. Returns raw samples and one
+-/// summary row per (scheme, operation, mode, message length, input class).
+-pub fn run(config: &BenchConfig) -> (Vec<RawSample>, Vec<SummaryRow>) {
++/// summary row per case, or a configuration error.
++pub fn run(config: &BenchConfig) -> Result<(Vec<RawSample>, Vec<SummaryRow>), ConfigError> {
++    validate(config)?;
+     let mut raw = Vec::new();
+     let mut summaries = Vec::new();
+ 
+@@ -74,7 +244,9 @@ pub fn run(config: &BenchConfig) -> (Vec<RawSample>, Vec<SummaryRow>) {
+         let scheme = scheme_from_name(scheme_name)
+             .unwrap_or_else(|| panic!("unknown scheme in config: {scheme_name}"));
+ 
+-        measure_keygen(config, &mut raw, &mut summaries, scheme);
++        if config.operations.iter().any(|o| o == "keygen") {
++            measure_keygen(config, &mut raw, &mut summaries, scheme);
++        }
+ 
+         let kp = scheme.keygen().expect("keygen");
+         let signer = scheme.prepare_signer(&kp.secret).expect("prepare signer");
+@@ -85,36 +257,59 @@ pub fn run(config: &BenchConfig) -> (Vec<RawSample>, Vec<SummaryRow>) {
+         for &mlen in &config.message_lengths {
+             let msg = message_for(mlen);
+             for mode in &config.modes {
+-                measure_sign(
+-                    config,
+-                    &mut raw,
+-                    &mut summaries,
+-                    scheme,
+-                    mode,
+-                    &kp,
+-                    &signer,
+-                    &verifier,
+-                    mlen,
+-                    &msg,
+-                );
+-                measure_verify(
+-                    config,
+-                    &mut raw,
+-                    &mut summaries,
+-                    scheme,
+-                    mode,
+-                    &kp,
+-                    &signer,
+-                    &verifier,
+-                    mlen,
+-                    &msg,
+-                    &config.input_classes,
+-                );
++                if config.operations.iter().any(|o| o == "sign") {
++                    measure_sign(
++                        config,
++                        &mut raw,
++                        &mut summaries,
++                        scheme,
++                        mode,
++                        &kp,
++                        &signer,
++                        &verifier,
++                        mlen,
++                        &msg,
++                    );
++                }
++                if config.operations.iter().any(|o| o == "verify") {
++                    measure_verify(
++                        config,
++                        &mut raw,
++                        &mut summaries,
++                        scheme,
++                        mode,
++                        &kp,
++                        &signer,
++                        &verifier,
++                        mlen,
++                        &msg,
++                        false,
++                    );
++                }
++                if config.operations.iter().any(|o| o == "verify_strict") {
++                    measure_verify(
++                        config,
++                        &mut raw,
++                        &mut summaries,
++                        scheme,
++                        mode,
++                        &kp,
++                        &signer,
++                        &verifier,
++                        mlen,
++                        &msg,
++                        true,
++                    );
++                }
+             }
+         }
++
++        if config.operations.iter().any(|o| o == "authorize") {
++            measure_authorize(config, &mut raw, &mut summaries, scheme);
++        }
+     }
+ 
+-    (raw, summaries)
++    Ok((raw, summaries))
+ }
+ 
+ fn scheme_from_name(name: &str) -> Option<Scheme> {
+@@ -131,7 +326,7 @@ fn scheme_from_name(name: &str) -> Option<Scheme> {
+ /// encoded withdrawal intent (see `docs/encoding.md`).
+ fn message_for(len: usize) -> Vec<u8> {
+     match len {
+-        166 => WithdrawalIntent::new(
++        INTENT_LEN => WithdrawalIntent::new(
+             Scheme::Ed25519,
+             7,
+             [0xab; 32],
+@@ -149,40 +344,91 @@ fn message_for(len: usize) -> Vec<u8> {
+     }
+ }
+ 
+-fn measure_keygen(
++/// Time `f`, return `(elapsed_ns, black_box(result))`. The result is black-boxed
++/// so the call cannot be optimized away; it is consumed after the timestamp.
++#[inline(always)]
++fn timed<T>(f: impl FnOnce() -> T) -> (u64, T) {
++    let t0 = Instant::now();
++    let out = f();
++    let ns = t0.elapsed().as_nanos() as u64;
++    (ns, black_box(out))
++}
++
++struct CaseStats {
++    total: usize,
++    valid: usize,
++    times: Vec<u64>,
++    budget_limited: bool,
++}
++
++#[allow(clippy::too_many_arguments)]
++fn collect(
+     config: &BenchConfig,
+     raw: &mut Vec<RawSample>,
+-    summaries: &mut Vec<SummaryRow>,
+     scheme: Scheme,
+-) {
+-    let class = "n/a";
+-    let mode = "n/a";
+-    let mut times = Vec::with_capacity(config.samples);
+-    for _ in 0..config.warmup {
+-        let _ = scheme.keygen();
+-    }
++    operation: &str,
++    mode: &str,
++    message_len: usize,
++    input_class: &str,
++    mut sample: impl FnMut(usize) -> (u64, bool),
++) -> CaseStats {
+     let budget = Duration::from_secs(config.budget_seconds);
+     let start = Instant::now();
+-    for i in 0..config.samples {
+-        let t0 = Instant::now();
+-        let _ = scheme.keygen().expect("keygen in loop");
+-        times.push(t0.elapsed().as_nanos() as u64);
++    let mut times = Vec::with_capacity(config.samples.min(4096));
++    let mut valid = 0usize;
++    let mut i = 0usize;
++    while i < config.samples {
++        let (elapsed_ns, ok) = sample(i);
++        if ok {
++            times.push(elapsed_ns);
++            valid += 1;
++        }
+         raw.push(RawSample {
+             run_id: config.run_id.clone(),
+             scheme: scheme.name().to_string(),
+             category: scheme.category_label().to_string(),
+-            operation: "keygen".to_string(),
++            operation: operation.to_string(),
+             mode: mode.to_string(),
+-            message_len: 0,
+-            input_class: class.to_string(),
++            message_len,
++            input_class: input_class.to_string(),
+             sample_index: i,
+-            elapsed_ns: *times.last().unwrap(),
++            elapsed_ns,
++            valid: ok,
+         });
++        i += 1;
+         if start.elapsed() > budget {
+             break;
+         }
+     }
+-    summaries.push(summarize(config, scheme, "keygen", mode, 0, class, &times));
++    CaseStats {
++        total: i,
++        valid,
++        times,
++        budget_limited: i < config.samples,
++    }
++}
++
++fn measure_keygen(
++    config: &BenchConfig,
++    raw: &mut Vec<RawSample>,
++    summaries: &mut Vec<SummaryRow>,
++    scheme: Scheme,
++) {
++    for _ in 0..config.warmup {
++        let _ = black_box(scheme.keygen());
++    }
++    let stats = collect(config, raw, scheme, "keygen", "n/a", 0, "n/a", |_| {
++        let (ns, out) = timed(|| scheme.keygen());
++        let ok = matches!(&out, Ok(kp) if keypair_well_formed(kp, scheme));
++        (ns, ok)
++    });
++    summaries.push(summarize(config, scheme, "keygen", "n/a", 0, "n/a", stats));
++}
++
++fn keypair_well_formed(kp: &KeyPair, scheme: Scheme) -> bool {
++    kp.scheme == scheme
++        && kp.public.len() == scheme.public_key_len()
++        && kp.secret.len() == scheme.secret_key_len()
+ }
+ 
+ #[allow(clippy::too_many_arguments)]
+@@ -192,62 +438,51 @@ fn measure_sign(
+     summaries: &mut Vec<SummaryRow>,
+     scheme: Scheme,
+     mode: &str,
+-    kp: &crate::crypto::KeyPair,
+-    signer: &crate::crypto::PreparedSigner,
+-    verifier: &crate::crypto::PreparedVerifier,
++    kp: &KeyPair,
++    signer: &PreparedSigner,
++    verifier: &PreparedVerifier,
+     mlen: usize,
+     msg: &[u8],
+ ) {
+-    // Produce and validate one signature outside the timed loop.
+-    let fixture = signer.sign(msg).expect("fixture sign");
+-    assert!(verifier.verify(msg, &fixture).expect("fixture verify"));
+-
+-    let mut times = Vec::with_capacity(config.samples);
+     for _ in 0..config.warmup {
+         match mode {
+             "prepared" => {
+-                let _ = signer.sign(msg);
++                let _ = black_box(signer.sign(black_box(msg)));
+             }
+             "byte" => {
+-                let _ = scheme.sign(&kp.secret, msg);
++                let _ = black_box(scheme.sign(&kp.secret, black_box(msg)));
+             }
+             other => panic!("unknown mode: {other}"),
+         }
+     }
+-    let budget = Duration::from_secs(config.budget_seconds);
+-    let start = Instant::now();
+-    for i in 0..config.samples {
+-        let t0 = Instant::now();
+-        match mode {
+-            "prepared" => {
+-                let _ = signer.sign(msg);
+-            }
+-            "byte" => {
+-                let _ = scheme.sign(&kp.secret, msg);
+-            }
++    let stats = collect(config, raw, scheme, "sign", mode, mlen, "valid", |_| {
++        let (ns, out) = timed(|| match mode {
++            "prepared" => signer.sign(black_box(msg)),
++            "byte" => scheme.sign(&kp.secret, black_box(msg)),
+             other => panic!("unknown mode: {other}"),
+-        }
+-        times.push(t0.elapsed().as_nanos() as u64);
+-        raw.push(RawSample {
+-            run_id: config.run_id.clone(),
+-            scheme: scheme.name().to_string(),
+-            category: scheme.category_label().to_string(),
+-            operation: "sign".to_string(),
+-            mode: mode.to_string(),
+-            message_len: mlen,
+-            input_class: "valid".to_string(),
+-            sample_index: i,
+-            elapsed_ns: *times.last().unwrap(),
+         });
+-        if start.elapsed() > budget {
+-            break;
+-        }
+-    }
++        // Validate the signing output *outside* the measured interval.
++        let ok = match &out {
++            Ok(sig) => sig.len() == scheme.signature_len() && verifier.verify(msg, sig) == Ok(true),
++            Err(_) => false,
++        };
++        (ns, ok)
++    });
+     summaries.push(summarize(
+-        config, scheme, "sign", mode, mlen, "valid", &times,
++        config, scheme, "sign", mode, mlen, "valid", stats,
+     ));
+ }
+ 
++/// Expected verdict for a verify input class (the contract in `src/crypto.rs`).
++fn verdict_matches(result: &Result<bool, CryptoError>, class: &str) -> bool {
++    match class {
++        "valid" => matches!(result, Ok(true)),
++        "corrupted" => matches!(result, Ok(false)),
++        "invalid_len" => result.is_err(),
++        other => panic!("unknown input class: {other}"),
++    }
++}
++
+ #[allow(clippy::too_many_arguments)]
+ fn measure_verify(
+     config: &BenchConfig,
+@@ -255,86 +490,230 @@ fn measure_verify(
+     summaries: &mut Vec<SummaryRow>,
+     scheme: Scheme,
+     mode: &str,
+-    kp: &crate::crypto::KeyPair,
+-    signer: &crate::crypto::PreparedSigner,
+-    verifier: &crate::crypto::PreparedVerifier,
++    kp: &KeyPair,
++    signer: &PreparedSigner,
++    verifier: &PreparedVerifier,
+     mlen: usize,
+     msg: &[u8],
+-    classes: &[String],
++    strict: bool,
+ ) {
+-    // Build the valid fixture once, outside the timed loop.
+-    let sig = signer.sign(msg).expect("fixture sign");
+-    assert!(verifier.verify(msg, &sig).expect("fixture verify ok"));
++    let operation = if strict { "verify_strict" } else { "verify" };
++    let base = signer.sign(msg).expect("fixture sign");
+ 
+-    for class in classes {
+-        // Build the class-specific signature and confirm the expected verdict
++    for class in &config.input_classes {
++        // Build the class-specific signature and confirm the intended verdict
+         // once, outside the timed loop.
+         let sig = match class.as_str() {
+             "valid" => {
+-                assert!(verifier.verify(msg, &sig).expect("valid verifies"));
+-                sig.clone()
++                assert_eq!(verifier.verify(msg, &base), Ok(true), "valid fixture");
++                base.clone()
+             }
+             "corrupted" => {
+-                let mut c = sig.clone();
++                let mut c = base.clone();
+                 let mid = c.len() / 2;
+                 c[mid] ^= 0x01;
+-                assert_eq!(verifier.verify(msg, &c), Ok(false));
++                assert_eq!(verifier.verify(msg, &c), Ok(false), "corrupted fixture");
+                 c
+             }
+             "invalid_len" => {
+-                let mut t = sig.clone();
++                let mut t = base.clone();
+                 t.pop();
+-                assert!(verifier.verify(msg, &t).is_err());
++                assert!(verifier.verify(msg, &t).is_err(), "invalid_len fixture");
+                 t
+             }
+             other => panic!("unknown input class: {other}"),
+         };
+ 
+-        let mut times = Vec::with_capacity(config.samples);
+         for _ in 0..config.warmup {
+-            match mode {
+-                "prepared" => {
+-                    let _ = verifier.verify(msg, &sig);
+-                }
+-                "byte" => {
+-                    let _ = scheme.verify(&kp.public, msg, &sig);
+-                }
+-                other => panic!("unknown mode: {other}"),
+-            }
++            let _ = black_box(run_verify(scheme, mode, strict, kp, verifier, msg, &sig));
+         }
+-        let budget = Duration::from_secs(config.budget_seconds);
+-        let start = Instant::now();
+-        for i in 0..config.samples {
+-            let t0 = Instant::now();
+-            match mode {
+-                "prepared" => {
+-                    let _ = verifier.verify(msg, &sig);
+-                }
+-                "byte" => {
+-                    let _ = scheme.verify(&kp.public, msg, &sig);
+-                }
+-                other => panic!("unknown mode: {other}"),
+-            }
+-            times.push(t0.elapsed().as_nanos() as u64);
+-            raw.push(RawSample {
+-                run_id: config.run_id.clone(),
+-                scheme: scheme.name().to_string(),
+-                category: scheme.category_label().to_string(),
+-                operation: "verify".to_string(),
+-                mode: mode.to_string(),
+-                message_len: mlen,
+-                input_class: class.to_string(),
+-                sample_index: i,
+-                elapsed_ns: *times.last().unwrap(),
+-            });
+-            if start.elapsed() > budget {
+-                break;
++        let stats = collect(config, raw, scheme, operation, mode, mlen, class, |_| {
++            let (ns, out) = timed(|| run_verify(scheme, mode, strict, kp, verifier, msg, &sig));
++            let ok = verdict_matches(&out, class);
++            (ns, ok)
++        });
++        summaries.push(summarize(
++            config, scheme, operation, mode, mlen, class, stats,
++        ));
++    }
++}
++
++fn run_verify(
++    scheme: Scheme,
++    mode: &str,
++    strict: bool,
++    kp: &KeyPair,
++    verifier: &PreparedVerifier,
++    msg: &[u8],
++    sig: &[u8],
++) -> Result<bool, CryptoError> {
++    match (mode, strict) {
++        ("prepared", false) => verifier.verify(black_box(msg), black_box(sig)),
++        ("prepared", true) => verifier.verify_strict(black_box(msg), black_box(sig)),
++        ("byte", false) => scheme.verify(&kp.public, black_box(msg), black_box(sig)),
++        ("byte", true) => scheme.verify_strict(&kp.public, black_box(msg), black_box(sig)),
++        _ => panic!("unknown mode: {mode}"),
++    }
++}
++
++/// A fresh authorizer with the scheme's key registered under `AUTHORIZE_KEY_ID`.
++fn build_authorizer(scheme: Scheme) -> (Authorizer, KeyPair) {
++    let kp = scheme.keygen().expect("keygen");
++    let mut registry = KeyRegistry::default();
++    registry
++        .register(RegisteredKey {
++            key_id: AUTHORIZE_KEY_ID,
++            scheme,
++            public_key: kp.public.clone(),
++        })
++        .expect("register key");
++    let authorizer = Authorizer::new(
++        Environment::new(AUTHORIZE_NETWORK, AUTHORIZE_PROGRAM),
++        registry,
++    );
++    (authorizer, kp)
++}
++
++fn authorize_fixture(kp: &KeyPair, scheme: Scheme, nonce: u64) -> (Vec<u8>, Vec<u8>) {
++    let intent = WithdrawalIntent::new(
++        scheme,
++        AUTHORIZE_KEY_ID,
++        AUTHORIZE_NETWORK,
++        AUTHORIZE_PROGRAM,
++        AUTHORIZE_ASSET,
++        AUTHORIZE_RECIPIENT,
++        AUTHORIZE_AMOUNT,
++        nonce,
++        AUTHORIZE_EXPIRY,
++    );
++    let bytes = intent.encode().to_vec();
++    let sig = scheme.sign(&kp.secret, &bytes).expect("sign fixture");
++    (bytes, sig)
++}
++
++fn measure_authorize(
++    config: &BenchConfig,
++    raw: &mut Vec<RawSample>,
++    summaries: &mut Vec<SummaryRow>,
++    scheme: Scheme,
++) {
++    // `valid`: state-advancing successes. Fixtures are signed in batches
++    // *between* timed samples, so signing is outside the timed interval and no
++    // nonce is ever replayed.
++    let (mut authorizer, kp) = build_authorizer(scheme);
++    let mut next_nonce = 0u64;
++    for _ in 0..config.warmup {
++        let (b, s) = authorize_fixture(&kp, scheme, next_nonce);
++        next_nonce += 1;
++        authorizer
++            .authorize(&b, &s, AUTHORIZE_SLOT)
++            .expect("warmup authorize");
++    }
++    let budget = Duration::from_secs(config.budget_seconds);
++    let start = Instant::now();
++    let mut times = Vec::new();
++    let mut valid = 0usize;
++    let mut total = 0usize;
++    let mut pending: std::collections::VecDeque<(Vec<u8>, Vec<u8>)> =
++        std::collections::VecDeque::new();
++    while total < config.samples {
++        if pending.is_empty() {
++            for _ in 0..AUTHORIZE_BATCH {
++                pending.push_back(authorize_fixture(&kp, scheme, next_nonce));
++                next_nonce += 1;
+             }
+         }
+-        summaries.push(summarize(
+-            config, scheme, "verify", mode, mlen, class, &times,
++        let (bytes, sig) = pending.pop_front().expect("batch fixture");
++        let (ns, out) =
++            timed(|| authorizer.authorize(black_box(&bytes), black_box(&sig), AUTHORIZE_SLOT));
++        let ok = out.is_ok();
++        raw.push(RawSample {
++            run_id: config.run_id.clone(),
++            scheme: scheme.name().to_string(),
++            category: scheme.category_label().to_string(),
++            operation: "authorize".to_string(),
++            mode: "authorizer".to_string(),
++            message_len: INTENT_LEN,
++            input_class: "valid".to_string(),
++            sample_index: total,
++            elapsed_ns: ns,
++            valid: ok,
++        });
++        total += 1;
++        if ok {
++            times.push(ns);
++            valid += 1;
++        }
++        if start.elapsed() > budget {
++            break;
++        }
++    }
++    summaries.push(summarize(
++        config,
++        scheme,
++        "authorize",
++        "authorizer",
++        INTENT_LEN,
++        "valid",
++        CaseStats {
++            total,
++            valid,
++            times,
++            budget_limited: total < config.samples,
++        },
++    ));
++
++    // `replay`: one accepted request, then repeated resubmission of the same
++    // signature — a rejection workload, classified by construction.
++    let (mut authorizer, kp) = build_authorizer(scheme);
++    let (bytes, sig) = authorize_fixture(&kp, scheme, 0);
++    authorizer
++        .authorize(&bytes, &sig, AUTHORIZE_SLOT)
++        .expect("first accept consumes nonce");
++    for _ in 0..config.warmup {
++        assert!(matches!(
++            authorizer.authorize(&bytes, &sig, AUTHORIZE_SLOT),
++            Err(AuthError::NonceMismatch { .. })
+         ));
+     }
++    let stats = collect(
++        config,
++        raw,
++        scheme,
++        "authorize",
++        "authorizer",
++        INTENT_LEN,
++        "replay",
++        |_| {
++            let (ns, out) =
++                timed(|| authorizer.authorize(black_box(&bytes), black_box(&sig), AUTHORIZE_SLOT));
++            let ok = matches!(out, Err(AuthError::NonceMismatch { .. }));
++            (ns, ok)
++        },
++    );
++    summaries.push(summarize(
++        config,
++        scheme,
++        "authorize",
++        "authorizer",
++        INTENT_LEN,
++        "replay",
++        stats,
++    ));
++}
++
++/// Status of a timed case from its total and valid sample counts. An empty or
++/// all-invalid case is never reported as `ok`.
++pub fn case_status(total: usize, valid: usize) -> &'static str {
++    if total == 0 {
++        "skipped"
++    } else if valid == 0 {
++        "failed"
++    } else if valid < total {
++        "partial"
++    } else {
++        "ok"
++    }
+ }
+ 
+ fn summarize(
+@@ -344,11 +723,25 @@ fn summarize(
+     mode: &str,
+     mlen: usize,
+     class: &str,
+-    times: &[u64],
++    stats: CaseStats,
+ ) -> SummaryRow {
+-    let mut sorted = times.to_vec();
++    let status = case_status(stats.total, stats.valid).to_string();
++    let note = match status.as_str() {
++        "skipped" => "no samples were collected".to_string(),
++        "failed" => format!("all {} samples produced an unexpected result", stats.total),
++        "partial" => format!(
++            "{} of {} samples produced an unexpected result",
++            stats.total - stats.valid,
++            stats.total
++        ),
++        _ => String::new(),
++    };
++
++    let mut sorted = stats.times.clone();
+     sorted.sort_unstable();
+     let p95 = (sorted.len() >= config.min_samples).then(|| quantile(&sorted, 0.95).round() as u64);
++    let stat = |q: f64| (!sorted.is_empty()).then(|| quantile(&sorted, q).round() as u64);
++
+     SummaryRow {
+         run_id: config.run_id.clone(),
+         scheme: scheme.name().to_string(),
+@@ -357,20 +750,23 @@ fn summarize(
+         mode: mode.to_string(),
+         message_len: mlen,
+         input_class: class.to_string(),
+-        sample_count: sorted.len(),
+-        median_ns: quantile(&sorted, 0.50).round() as u64,
+-        q1_ns: quantile(&sorted, 0.25).round() as u64,
+-        q3_ns: quantile(&sorted, 0.75).round() as u64,
++        sample_count: stats.total,
++        valid_count: stats.valid,
++        budget_limited: stats.budget_limited,
++        median_ns: stat(0.50),
++        q1_ns: stat(0.25),
++        q3_ns: stat(0.75),
+         p95_ns: p95,
+         public_key_bytes: scheme.public_key_len(),
+         signature_bytes: scheme.signature_len(),
+-        status: "ok".to_string(),
++        status,
++        note,
+     }
+ }
+ 
+ /// Linear-interpolation quantile over sorted values (0.0 <= q <= 1.0).
+ /// This matches the common "linear" method; it is the documented project rule.
+-fn quantile(sorted: &[u64], q: f64) -> f64 {
++pub fn quantile(sorted: &[u64], q: f64) -> f64 {
+     let n = sorted.len();
+     if n == 0 {
+         return 0.0;
+diff --git a/src/lib.rs b/src/lib.rs
+index 9d8239e..ddd136b 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -5,4 +5,5 @@ pub mod authorization;
+ pub mod bench;
+ pub mod crypto;
+ pub mod intent;
++pub mod provenance;
+ pub mod transport;
+diff --git a/src/main.rs b/src/main.rs
+index cdb74d2..37c304a 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -85,24 +85,53 @@ fn run_transport() {
+     println!("wrote {path} and {spath}");
+ }
+ 
+-fn run_benchmark(args: &[String]) {
+-    let config_path = args
+-        .iter()
+-        .position(|a| a == "--config")
++fn arg_value(args: &[String], name: &str) -> Option<String> {
++    args.iter()
++        .position(|a| a == name)
+         .and_then(|i| args.get(i + 1))
+         .cloned()
+         .or_else(|| {
++            let prefix = format!("{name}=");
+             args.iter()
+-                .find_map(|a| a.strip_prefix("--config=").map(String::from))
++                .find_map(|a| a.strip_prefix(&prefix).map(String::from))
+         })
+-        .unwrap_or_else(|| "configs/quick.json".to_string());
+-    let config: BenchConfig = serde_json::from_str(
++}
++
++fn run_benchmark(args: &[String]) {
++    let config_path =
++        arg_value(args, "--config").unwrap_or_else(|| "configs/quick.json".to_string());
++    let mut config: BenchConfig = serde_json::from_str(
+         &std::fs::read_to_string(&config_path)
+             .unwrap_or_else(|e| panic!("read config {config_path}: {e}")),
+     )
+     .unwrap_or_else(|e| panic!("parse config {config_path}: {e}"));
++    if let Some(id) = arg_value(args, "--run-id") {
++        config.run_id = id;
++    }
++    let force = args.iter().any(|a| a == "--force");
+ 
+-    let (raw, summaries) = bench::run(&config);
++    if let Err(e) = bench::validate(&config) {
++        eprintln!("invalid benchmark config {config_path}: {e}");
++        std::process::exit(2);
++    }
++
++    let meta_path = format!("results/{}.json", config.run_id);
++    if !force && std::path::Path::new(&meta_path).exists() {
++        eprintln!(
++            "run_id {:?} already has {meta_path}; choose a new --run-id or pass --force to overwrite",
++            config.run_id
++        );
++        std::process::exit(2);
++    }
++
++    // Provenance is captured *before* any result file is written, so this run's
++    // own outputs are never mistaken for pre-existing source changes.
++    let mut meta = pq_solana_lab::provenance::capture(&config.run_id, &config_path, &config);
++    if let Some(patch) = pq_solana_lab::provenance::write_dirty_patch(&config.run_id) {
++        meta["dirty_patch"] = serde_json::json!(patch);
++    }
++
++    let (raw, summaries) = bench::run(&config).expect("validated config");
+ 
+     std::fs::create_dir_all("results/raw").expect("mkdir results/raw");
+     std::fs::create_dir_all("results/summaries").expect("mkdir results/summaries");
+@@ -111,22 +140,50 @@ fn run_benchmark(args: &[String]) {
+         &format!("results/summaries/{}.csv", config.run_id),
+         &summaries,
+     );
+-    write_metadata(&config);
++
++    meta["status_counts"] = status_counts(&summaries);
++    meta["raw_rows"] = serde_json::json!(raw.len());
++    std::fs::write(
++        &meta_path,
++        serde_json::to_string_pretty(&meta).expect("serialize metadata"),
++    )
++    .unwrap_or_else(|e| panic!("write {meta_path}: {e}"));
+ 
+     print_summary_table(&summaries);
++    print_problems(&summaries);
++    println!(
++        "wrote results/raw/{0}.csv, results/summaries/{0}.csv, {1}",
++        config.run_id, meta_path
++    );
++}
++
++fn status_counts(rows: &[SummaryRow]) -> serde_json::Value {
++    let mut ok = 0;
++    let mut partial = 0;
++    let mut failed = 0;
++    let mut skipped = 0;
++    for r in rows {
++        match r.status.as_str() {
++            "ok" => ok += 1,
++            "partial" => partial += 1,
++            "failed" => failed += 1,
++            _ => skipped += 1,
++        }
++    }
++    serde_json::json!({ "ok": ok, "partial": partial, "failed": failed, "skipped": skipped })
+ }
+ 
+ fn write_raw_csv(path: &str, rows: &[RawSample]) {
+     let mut out = Vec::new();
+     writeln!(
+         out,
+-        "run_id,scheme,category,operation,mode,message_len,input_class,sample_index,elapsed_ns"
++        "run_id,scheme,category,operation,mode,message_len,input_class,sample_index,elapsed_ns,valid"
+     )
+     .unwrap();
+     for r in rows {
+         writeln!(
+             out,
+-            "{},{},{},{},{},{},{},{},{}",
++            "{},{},{},{},{},{},{},{},{},{}",
+             r.run_id,
+             r.scheme,
+             csv(&r.category),
+@@ -135,7 +192,8 @@ fn write_raw_csv(path: &str, rows: &[RawSample]) {
+             r.message_len,
+             r.input_class,
+             r.sample_index,
+-            r.elapsed_ns
++            r.elapsed_ns,
++            u8::from(r.valid)
+         )
+         .unwrap();
+     }
+@@ -146,14 +204,14 @@ fn write_summary_csv(path: &str, rows: &[SummaryRow]) {
+     let mut out = Vec::new();
+     writeln!(
+         out,
+-        "run_id,scheme,category,operation,mode,message_len,input_class,sample_count,median_ns,q1_ns,q3_ns,p95_ns,public_key_bytes,signature_bytes,status"
++        "run_id,scheme,category,operation,mode,message_len,input_class,sample_count,valid_count,budget_limited,median_ns,q1_ns,q3_ns,p95_ns,public_key_bytes,signature_bytes,status,note"
+     )
+     .unwrap();
+     for r in rows {
+-        let p95 = r.p95_ns.map(|v| v.to_string()).unwrap_or_default();
++        let opt = |v: Option<u64>| v.map(|n| n.to_string()).unwrap_or_default();
+         writeln!(
+             out,
+-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
++            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+             r.run_id,
+             r.scheme,
+             csv(&r.category),
+@@ -162,63 +220,55 @@ fn write_summary_csv(path: &str, rows: &[SummaryRow]) {
+             r.message_len,
+             r.input_class,
+             r.sample_count,
+-            r.median_ns,
+-            r.q1_ns,
+-            r.q3_ns,
+-            p95,
++            r.valid_count,
++            u8::from(r.budget_limited),
++            opt(r.median_ns),
++            opt(r.q1_ns),
++            opt(r.q3_ns),
++            opt(r.p95_ns),
+             r.public_key_bytes,
+             r.signature_bytes,
+-            r.status
++            r.status,
++            csv(&r.note)
+         )
+         .unwrap();
+     }
+     std::fs::write(path, out).unwrap_or_else(|e| panic!("write {path}: {e}"));
+ }
+ 
+-fn write_metadata(config: &BenchConfig) {
+-    let git_rev = std::process::Command::new("git")
+-        .args(["rev-parse", "HEAD"])
+-        .output()
+-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+-        .unwrap_or_else(|_| "unknown".to_string());
+-    let dirty = std::process::Command::new("git")
+-        .args(["status", "--porcelain"])
+-        .output()
+-        .map(|o| !o.stdout.is_empty())
+-        .unwrap_or(true);
+-    let meta = serde_json::json!({
+-        "run_id": config.run_id,
+-        "recorded_unix_s": std::time::SystemTime::now()
+-            .duration_since(std::time::UNIX_EPOCH)
+-            .map(|d| d.as_secs())
+-            .unwrap_or(0),
+-        "git_revision": git_rev,
+-        "working_tree_dirty": dirty,
+-        "os": std::env::consts::OS,
+-        "arch": std::env::consts::ARCH,
+-        "config": config,
+-        "note": "Host timings describe one implementation on one machine; not a universal ranking, not constant-time evidence, never converted to Solana compute units.",
+-    });
+-    let path = format!("results/{}.json", config.run_id);
+-    std::fs::write(
+-        &path,
+-        serde_json::to_string_pretty(&meta).expect("serialize metadata"),
+-    )
+-    .unwrap_or_else(|e| panic!("write {path}: {e}"));
+-}
+-
+ fn print_summary_table(rows: &[SummaryRow]) {
+     println!("summary (median ns):");
+     for r in rows {
++        let median = r
++            .median_ns
++            .map(|m| m.to_string())
++            .unwrap_or_else(|| "-".to_string());
+         println!(
+-            "  {:<10} {:<8} {:<9} len={:<4} class={:<11} n={:<5} median={}",
++            "  {:<10} {:<13} {:<10} len={:<4} class={:<11} n={:<5}/{:<5} median={:<10} {}",
+             r.scheme,
+             r.operation,
+             r.mode,
+             r.message_len,
+             r.input_class,
++            r.valid_count,
+             r.sample_count,
+-            r.median_ns
++            median,
++            r.status
++        );
++    }
++}
++
++fn print_problems(rows: &[SummaryRow]) {
++    let problems: Vec<&SummaryRow> = rows.iter().filter(|r| r.status != "ok").collect();
++    if problems.is_empty() {
++        println!("all {} cases ok", rows.len());
++        return;
++    }
++    println!("cases needing attention:");
++    for r in problems {
++        println!(
++            "  {:<10} {:<13} {:<10} len={:<4} class={:<11} status={} ({})",
++            r.scheme, r.operation, r.mode, r.message_len, r.input_class, r.status, r.note
+         );
+     }
+ }
+diff --git a/tests/report_consistency.rs b/tests/report_consistency.rs
+index 6d9b94a..8c55c9f 100644
+--- a/tests/report_consistency.rs
++++ b/tests/report_consistency.rs
+@@ -3,11 +3,13 @@
+ //! rule as `src/bench.rs`. A stale or hand-edited summary is reported here
+ //! rather than silently published.
+ //!
+-//! The check is skipped (with a note) when the committed result files are
+-//! absent, but fails loudly when they disagree.
++//! Every `results/raw/<id>.csv` with a matching `results/summaries/<id>.csv`
++//! is checked, so all recorded runs are covered. The check is skipped (with a
++//! note) when no result files are present, but fails loudly on any mismatch.
+ 
+ use std::collections::HashMap;
+ use std::fs;
++use std::path::Path;
+ 
+ /// Linear-interpolation quantile, identical to `src/bench.rs::quantile`.
+ fn quantile(sorted: &[u64], q: f64) -> f64 {
+@@ -23,65 +25,165 @@ fn quantile(sorted: &[u64], q: f64) -> f64 {
+     sorted[lo] as f64 * (1.0 - frac) + sorted[hi] as f64 * frac
+ }
+ 
+-fn round_half_away(x: f64) -> u64 {
+-    x.round() as u64
++/// Parse a CSV file into (header, rows), splitting each line into at most
++/// `header.len()` fields so a trailing free-text column may contain separators.
++fn parse_csv(path: &str) -> (Vec<String>, Vec<Vec<String>>) {
++    let text = fs::read_to_string(path).unwrap_or_else(|e| panic!("read {path}: {e}"));
++    let mut lines = text.lines();
++    let header: Vec<String> = lines
++        .next()
++        .expect("empty csv")
++        .split(',')
++        .map(|s| s.to_string())
++        .collect();
++    let n = header.len();
++    let rows = lines
++        .filter(|l| !l.is_empty())
++        .map(|l| l.splitn(n, ',').map(|s| s.to_string()).collect())
++        .collect();
++    (header, rows)
+ }
+ 
+-fn stats(samples: &[u64]) -> (usize, u64, u64, u64) {
+-    let mut xs = samples.to_vec();
+-    xs.sort_unstable();
+-    (
+-        xs.len(),
+-        round_half_away(quantile(&xs, 0.50)),
+-        round_half_away(quantile(&xs, 0.25)),
+-        round_half_away(quantile(&xs, 0.75)),
+-    )
++fn col(header: &[String], name: &str) -> usize {
++    header
++        .iter()
++        .position(|h| h == name)
++        .unwrap_or_else(|| panic!("missing column {name}"))
+ }
+ 
+-#[test]
+-fn summaries_match_raw_samples() {
+-    let raw_path = "results/raw/full.csv";
+-    let sum_path = "results/summaries/full.csv";
+-    if !std::path::Path::new(raw_path).exists() || !std::path::Path::new(sum_path).exists() {
+-        eprintln!("skipping: {raw_path} or {sum_path} not present");
+-        return;
+-    }
++fn get(row: &[String], idx: usize) -> &str {
++    row.get(idx).map(String::as_str).unwrap_or("")
++}
++
++struct Group {
++    total: usize,
++    times: Vec<u64>,
++}
++
++fn check_pair(raw_path: &str, sum_path: &str) {
++    let (raw_header, raw_rows) = parse_csv(raw_path);
++    let (sum_header, sum_rows) = parse_csv(sum_path);
+ 
+-    let mut groups: HashMap<String, Vec<u64>> = HashMap::new();
+-    for (i, line) in fs::read_to_string(raw_path).unwrap().lines().enumerate() {
+-        if i == 0 {
+-            continue; // header
++    let rc = |name: &str| col(&raw_header, name);
++    let sc = |name: &str| col(&sum_header, name);
++    let has_valid_raw = raw_header.iter().any(|h| h == "valid");
++
++    let mut groups: HashMap<String, Group> = HashMap::new();
++    for r in &raw_rows {
++        let key = format!(
++            "{}|{}|{}|{}|{}",
++            get(r, rc("scheme")),
++            get(r, rc("operation")),
++            get(r, rc("mode")),
++            get(r, rc("message_len")),
++            get(r, rc("input_class"))
++        );
++        let elapsed = get(r, rc("elapsed_ns")).parse::<u64>().unwrap();
++        let valid = if has_valid_raw {
++            get(r, rc("valid")) == "1"
++        } else {
++            true
++        };
++        let g = groups.entry(key).or_insert(Group {
++            total: 0,
++            times: Vec::new(),
++        });
++        g.total += 1;
++        if valid {
++            g.times.push(elapsed);
+         }
+-        let f: Vec<&str> = line.split(',').collect();
+-        assert_eq!(f.len(), 9, "unexpected raw row: {line}");
+-        let key = format!("{}|{}|{}|{}|{}", f[1], f[3], f[4], f[5], f[6]);
+-        groups
+-            .entry(key)
+-            .or_default()
+-            .push(f[8].parse::<u64>().unwrap());
+     }
+-    assert!(!groups.is_empty(), "no raw samples parsed from {raw_path}");
++    assert!(!groups.is_empty(), "no raw samples in {raw_path}");
+ 
++    let has_valid_count = sum_header.iter().any(|h| h == "valid_count");
+     let mut checked = 0usize;
+-    for (i, line) in fs::read_to_string(sum_path).unwrap().lines().enumerate() {
+-        if i == 0 {
+-            continue;
+-        }
+-        let f: Vec<&str> = line.split(',').collect();
+-        assert_eq!(f.len(), 15, "unexpected summary row: {line}");
+-        let key = format!("{}|{}|{}|{}|{}", f[1], f[3], f[4], f[5], f[6]);
+-        let samples = groups
++    for s in &sum_rows {
++        let key = format!(
++            "{}|{}|{}|{}|{}",
++            get(s, sc("scheme")),
++            get(s, sc("operation")),
++            get(s, sc("mode")),
++            get(s, sc("message_len")),
++            get(s, sc("input_class"))
++        );
++        let g = groups
+             .get(&key)
+             .unwrap_or_else(|| panic!("summary row has no raw samples: {key}"));
+-        let (n, median, q1, q3) = stats(samples);
+-        assert_eq!(n, f[7].parse::<usize>().unwrap(), "sample_count {key}");
+-        assert_eq!(median, f[8].parse::<u64>().unwrap(), "median {key}");
+-        assert_eq!(q1, f[9].parse::<u64>().unwrap(), "q1 {key}");
+-        assert_eq!(q3, f[10].parse::<u64>().unwrap(), "q3 {key}");
++
++        let sample_count = get(s, sc("sample_count")).parse::<usize>().unwrap();
++        assert_eq!(sample_count, g.total, "sample_count {key} in {sum_path}");
++
++        if has_valid_count {
++            let valid_count = get(s, sc("valid_count")).parse::<usize>().unwrap();
++            assert_eq!(valid_count, g.times.len(), "valid_count {key}");
++            let expected_status = if g.total == 0 {
++                "skipped"
++            } else if g.times.is_empty() {
++                "failed"
++            } else if g.times.len() < g.total {
++                "partial"
++            } else {
++                "ok"
++            };
++            assert_eq!(get(s, sc("status")), expected_status, "status {key}");
++        }
++
++        let mut sorted = g.times.clone();
++        sorted.sort_unstable();
++        let median = get(s, sc("median_ns"));
++        if sorted.is_empty() {
++            assert!(median.is_empty(), "empty case must have no median: {key}");
++        } else {
++            assert_eq!(
++                median.parse::<u64>().unwrap(),
++                quantile(&sorted, 0.50).round() as u64,
++                "median {key}"
++            );
++            assert_eq!(
++                get(s, sc("q1_ns")).parse::<u64>().unwrap(),
++                quantile(&sorted, 0.25).round() as u64,
++                "q1 {key}"
++            );
++            assert_eq!(
++                get(s, sc("q3_ns")).parse::<u64>().unwrap(),
++                quantile(&sorted, 0.75).round() as u64,
++                "q3 {key}"
++            );
++            let p95 = get(s, sc("p95_ns"));
++            if !p95.is_empty() {
++                assert_eq!(
++                    p95.parse::<u64>().unwrap(),
++                    quantile(&sorted, 0.95).round() as u64,
++                    "p95 {key}"
++                );
++            }
++        }
+         checked += 1;
+     }
+-    assert!(
+-        checked >= 100,
+-        "expected >=100 summary rows, checked {checked}"
+-    );
++    assert!(checked > 0, "no summary rows checked in {sum_path}");
++}
++
++#[test]
++fn summaries_match_raw_samples_for_every_run() {
++    let raw_dir = Path::new("results/raw");
++    if !raw_dir.exists() {
++        eprintln!("skipping: results/raw not present");
++        return;
++    }
++    let mut pairs = 0usize;
++    for entry in fs::read_dir(raw_dir).unwrap().flatten() {
++        let raw_path = entry.path();
++        if raw_path.extension().map(|e| e != "csv").unwrap_or(true) {
++            continue;
++        }
++        let stem = raw_path.file_stem().unwrap().to_string_lossy().to_string();
++        let sum_path = format!("results/summaries/{stem}.csv");
++        if !Path::new(&sum_path).exists() {
++            continue;
++        }
++        check_pair(raw_path.to_str().unwrap(), &sum_path);
++        pairs += 1;
++    }
++    assert!(pairs >= 1, "expected at least one raw/summary pair");
++    eprintln!("checked {pairs} run(s)");
+ }
