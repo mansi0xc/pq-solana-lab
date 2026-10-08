@@ -67,7 +67,12 @@
     "bincode": {
       "version": "1.3.3",
       "pinned": true,
-      "role": "classic Solana wire serialization (1232-byte packet limit)"
+      "role": "classic Solana wire serialization for legacy/v0 transactions (1,232-byte packet limit)"
+    },
+    "wincode": {
+      "version": "0.6.2",
+      "pinned": true,
+      "role": "v1 transaction wire encoding/decoding (solana-message 5.1.0 does not support bincode for v1)"
     }
   },
   "dev_dependencies": {

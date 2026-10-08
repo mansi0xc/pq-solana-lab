@@ -1,0 +1,13 @@
+scheme,format,signature_bytes,storage_bytes,chunk_bytes,chunk_count,total_transactions,total_transport_bytes,evidence_type
+ed25519,legacy,64,141,957,1,4,1396,modeled
+ed25519,v0,64,141,955,1,4,1404,modeled
+ed25519,v1,64,141,3809,1,4,1447,modeled
+ml-dsa-44,legacy,2420,2497,957,3,6,4303,modeled
+ml-dsa-44,v0,2420,2497,955,3,6,4315,modeled
+ml-dsa-44,v1,2420,2497,3809,1,4,3803,modeled
+ml-dsa-65,legacy,3309,3386,957,4,7,5467,modeled
+ml-dsa-65,v0,3309,3386,955,4,7,5481,modeled
+ml-dsa-65,v1,3309,3386,3809,1,4,4692,modeled
+slh-dsa-sha2-128s,legacy,7856,7933,957,9,12,11389,modeled
+slh-dsa-sha2-128s,v0,7856,7933,955,9,12,11413,modeled
+slh-dsa-sha2-128s,v1,7856,7933,3809,3,6,9813,modeled

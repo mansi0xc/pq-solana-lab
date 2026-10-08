@@ -35,11 +35,22 @@ With a trusted registry (assumption 1), correct environment identifiers
 (assumption 2), and an unforgeable signature scheme (assumption 5), accepting
 a *new* unauthorized canonical intent would require producing a signature that
 verifies under a registered public key for bytes the signer never signed — a
-forgery. The canonical encoding (fixed-width, exact-length, scheme and key id
+forgery on a message never queried to the signing oracle. That step is exactly
+the **EUF-CMA** guarantee (existential unforgeability under chosen-message
+attack). The canonical encoding (fixed-width, exact-length, scheme and key id
 inside the signed bytes) prevents cross-scheme and cross-key reinterpretation.
 
+**Strong unforgeability (SUF-CMA)** is a *different, stronger* property: it also
+forbids a new valid `(m, σ')` on a message `m` the signer already signed. FIPS
+204 §3.1 states ML-DSA is designed to be SUF-CMA. This prototype does not rely
+on it for the anti-forgery step: replay of an already-signed intent — or a
+different valid signature on the same intent — is rejected by **nonce/ledger
+state**, not by the signature scheme. A design that deduplicated by signature
+bytes, or had no replay state, would additionally depend on SUF-CMA.
+
 This is a *conditional application argument*, not a proof of ML-DSA or Ed25519
-and not an audit of a production system.
+and not an audit of a production system. The tests are behavioral evidence of
+the policy layer.
 
 ## Key validation and strict verification
 

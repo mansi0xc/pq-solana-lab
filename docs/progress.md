@@ -4,13 +4,34 @@
 
 | Milestone | Status | Evidence |
 | --- | --- | --- |
-| M1: Working primitives | **Complete** (committed) | `cargo test --release` → 10/10; demo genuine output |
-| M2: Authorization semantics | **Complete** (committed) | 46 tests pass (incl. Ed25519 RFC 8032 known-answer, weak-key rejection); demo genuine |
-| M3: Benchmark protocol | **Complete** (pending review/commit) | 4 schemes benchmarked; ML-DSA interop cross-check; 49 tests + all checks green |
-| M4: Solana transport analysis | **Complete** (pending review/commit) | legacy/v0/v1 serialized; direct + staged sizing; ML-DSA-44 fits v1, larger schemes don't |
-| M5: sBPF verifier experiment | **Complete** (blocker documented) | fips204 ML-DSA-44 compiles for sBF but fails the 4,096-byte stack-frame check (`verify_internal` ~62 KB) |
-| M6: Results and report | **Complete** (pending review/commit) | full profile run (94,546 raw rows); 3 plots; report + AI-usage doc written |
-| M7: Release | **Complete** (pending review/commit) | README in reviewer order; CI; demo script + outline; interview Q&A; résumé bullet |
+| M1: Working primitives | Complete (committed) | 10 crypto round-trip tests; demo genuine output |
+| M2: Authorization semantics | Complete (committed) | encoding (6), authorization (24), Ed25519 RFC 8032 known-answer (1) tests; demo genuine |
+| M3: Benchmark protocol | Complete (committed) | 4 schemes benchmarked; ML-DSA interop cross-check (3 tests); raw→summary consistency test |
+| M4: Solana transport analysis | Complete; **revised in correction batch 1** | legacy/v0 bincode + v1 `wincode`; minimal/operational templates; serialized staged protocol; 20 transport tests |
+| M5: sBPF verifier experiment | Complete (reproducible blocker) | `fips204` ML-DSA-44 compiles for sBF but exceeds the 4,096-byte stack-frame check (`verify_internal` ~62 KB); no execution |
+| M6: Results and report | Complete; **revised in correction batch 1** | full profile: 94,545 raw rows + 100 summary rows; 3 plots; generated tables; report; AI-usage doc |
+| M7: Release | Complete; **revised in correction batch 1** | README; CI; short demo + separate benchmark pilot; demo outline; interview Q&A |
+| Correction batch 1 (reviewer findings on `71b171f`) | Complete (pending author review/commit) | v1 wire encoding fixed; staged protocol defined; report statistics regenerated; security wording corrected |
+
+Counts in the historical sections below describe the state at each milestone;
+the current suite is **70 tests** (`cargo test --release --locked`, all green).
+
+## Evidence taxonomy
+
+- **Implemented** — code paths and their tests: crypto adapters, canonical
+  intent, authorizer, benchmark harness, transport serialization, analysis
+  scripts.
+- **Measured** — host wall-clock samples (`results/raw/*.csv`), actual
+  transaction wire bytes (`results/transport.json`), and sBPF compiler
+  diagnostics (`experiments/sbpf-verifier/build.log`).
+- **Modeled** — the staged-upload lifecycle: each component transaction is
+  serialized, but the sequence is not executed; treated as a lower-bound
+  estimate (`results/transport-staged.json`, evidence type `modeled`).
+- **Inferred** — nothing is presented as measured that was not measured.
+- **Unresolved** — persistent replay state; independent conformance for
+  ML-DSA-65/SLH-DSA; a specific numbered theorem from the threshold paper; and
+  on-chain execution of the verifier (blocked before execution).
+
 
 ## M1 — what was done (2026-10-04)
 
@@ -289,15 +310,18 @@ ML-DSA-44) but does not address signature size.
 ## M6 — results and report (2026-10-06)
 
 - Ran the frozen `full` profile (4 schemes, 1,000 samples/case, 60 s/case
-  budget, warm-up 20): 94,546 raw rows + 100 summary rows, at
-  `results/raw/full.csv` and `results/summaries/full.csv`, with metadata in
-  `results/full.json`.
-- `scripts/plot_results.py` generates three plots from raw data (median
-  recomputed from raw rows) into `results/plots/`: verification latency,
-  key/signature bytes, transport headroom.
+  budget, warm-up 20): **94,545 raw data rows** (94,546 lines including the
+  header) + 100 summary rows, at `results/raw/full.csv` and
+  `results/summaries/full.csv`, with metadata in `results/full.json`.
+- `scripts/plot_results.py` generates three plots from result artifacts (median
+  recomputed from raw rows; sizes read from summary metadata) into
+  `results/plots/`: verification latency, key/signature bytes, transport
+  headroom.
 - `docs/report.md`: four-to-six-page report — finding first, then related work,
   design, methodology, results, conditional security argument, limitations,
-  future work, attribution. `docs/ai-usage.md` records AI assistance.
+  future work, attribution. (At M6 an `docs/ai-usage.md` was *claimed* here but
+  was **not** written in the reviewed checkout; it exists now, added in
+  correction batch 1.)
 - Report numbers are traced to the raw/summary files; the threshold-ML-DSA
   paper (ePrint 2026/013) is cited from its abstract, and the limitation that a
   specific numbered theorem from its proof was not traced is stated explicitly.
@@ -310,11 +334,62 @@ ML-DSA-44) but does not address signature size.
 - Added `.github/workflows/ci.yml`: fmt, clippy `-D warnings`, release tests,
   rustdoc `-D warnings`, plus `demo`/`transport` smoke runs (no timing gates,
   no expensive benchmark/sBPF in CI).
-- `scripts/demo.sh` (chmod +x) + `docs/demo-outline.md` for the two-minute
-  recording; `docs/interview-qa.md` answers the plan's interview questions.
+- `scripts/demo.sh` (chmod +x) for the short recording. Note: at M7 this log
+  also claimed `docs/demo-outline.md` and `docs/interview-qa.md`, but **neither
+  existed in the reviewed checkout**; both are now written (correction batch 1),
+  and the demo script was split so its duration matches its description
+  (`scripts/bench-pilot.sh` carries the long pilot run).
+
+## Correction batch 1 — transport, statistics, and security claims (reviewer findings on `71b171f`)
+
+Issues found in the reviewer's inspection of the committed release, and what
+was done:
+
+1. **v1 transaction wire encoding was wrong.** `src/transport.rs` used
+   `bincode::serialize` for v1, but `solana-message` 5.1.0 states the v1 format
+   does not support bincode. v1 now uses the SDK's own `wincode` encoder (and
+   decoder), including the `0x81` prefix and fixed-length signature suffix.
+   Tests cover wire decoding, message equality, native signature verification,
+   the version prefix, and that a bincode v1 buffer is rejected. Legacy/v0 remain
+   bincode. The superseded numbers are preserved in
+   `results/transport.bincode-v1-superseded.json`.
+2. **Templates and v1 limits.** Explicit `minimal` (2-account) and
+   `operational` (4-account: payer + registry + authorization state + program)
+   templates; the operational v1 rows set `compute_unit_limit = 200_000` and
+   `loaded_accounts_data_size_limit = 65_536`. Signed intents now carry the row's
+   scheme id and the environment's program/network ids. The reviewer's
+   diagnostic ladder (4,074 / 4,082 / 4,115, plus the 4-account 4,148) is
+   reproduced by a test.
+3. **Staged upload is now a concrete protocol, not raw byte counts.** `Init` /
+   `Write` / `Seal` / `Authorize` instructions with defined encodings,
+   uploader/session/key binding, expected length, sequential offsets, sealing,
+   and session metadata + signature storage. Chunk capacity is derived from the
+   complete serialized `Write` transaction. Still labeled **modeled** (lower
+   bound); rent/registration/cleanup excluded.
+4. **Report statistics were wrong.** The report's "median" column actually held
+   first-quartile values (e.g. ML-DSA-44 sign reported as 95.1 µs when Q1 =
+   95,125 ns and the median = 127,625 ns). Tables are now generated from the raw
+   samples by `scripts/report_tables.py`, with `report_tables.py check` and
+   `tests/report_consistency.rs` failing on drift. Plots read sizes from result
+   metadata and error on missing data instead of plotting zero.
+5. **Security wording corrected.** The report described SUF-CMA as forgery on a
+   never-queried message (that is EUF-CMA). It now distinguishes EUF-CMA from
+   SUF-CMA, states that FIPS 204 §3.1 designs ML-DSA to be SUF-CMA, and explains
+   that the application's anti-forgery step needs EUF-CMA while replay is handled
+   by nonce/state.
+6. **Release/completion claims corrected.** The three missing documents were
+   created (`docs/ai-usage.md`, `docs/demo-outline.md`, `docs/interview-qa.md`);
+   the demo was split; the Python environment is documented
+   (`scripts/requirements.txt`); stale counts and statuses are fixed above.
+
+Commands run for this batch: `cargo fmt --check`; `cargo test --release
+--locked` (70 tests); `cargo clippy --release --all-targets --locked -- -D
+warnings`; `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --locked`; `cargo run
+--release --locked -- demo`; `cargo run --release --locked -- transport`;
+`python3 scripts/report_tables.py check`; `git diff --check`.
 
 ## Next action
 
-All milestones are complete. The user commits this release; a true clean-clone
-validation is covered by the CI workflow (`cargo test --release --locked` on a
-fresh checkout). No further implementation is planned within the initial scope.
+Correction batch 1 is complete and awaits the author's review and commit. Batch
+2 (benchmark observability, measurement boundaries, independent runs) begins
+only after that checkpoint.

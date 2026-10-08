@@ -1,6 +1,7 @@
 #!/bin/sh
-# Two-minute demonstration script. Produces genuine output from the actual
-# commands; nothing here is fabricated.
+# Short demonstration script (~seconds; genuine output from the actual
+# commands, nothing fabricated). The long benchmark runs are a separate step:
+# see scripts/bench-pilot.sh.
 set -e
 cd "$(dirname "$0")/.."
 
@@ -10,7 +11,3 @@ cargo run --release --locked -- demo
 echo
 echo "== 2. Transaction sizing (serialized) =="
 cargo run --release --locked -- transport
-
-echo
-echo "== 3. Benchmark pilot (2-3 min) =="
-cargo run --release --locked -- benchmark --config configs/quick.json

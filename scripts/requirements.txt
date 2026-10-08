@@ -1,0 +1,12 @@
+# Isolated Python environment for reproducing the report tables and plots.
+#
+#   python3 -m venv .venv
+#   . .venv/bin/activate
+#   pip install -r scripts/requirements.txt
+#
+# Then:
+#   python3 scripts/plot_results.py results/raw/full.csv results/summaries/full.csv results/transport.json results/plots
+#   python3 scripts/report_tables.py generate
+#   python3 scripts/report_tables.py check
+matplotlib==3.9.4
+numpy==2.0.2

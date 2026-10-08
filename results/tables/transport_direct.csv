@@ -1,0 +1,17 @@
+scheme,template,key_placement,account_count,legacy_bytes,v0_bytes,v1_bytes,v1_config,evidence_type
+ed25519,minimal,inline,2,434,436,438,empty,serialized
+ed25519,minimal,registered,2,402,404,406,empty,serialized
+ed25519,operational,inline,4,500,502,512,"compute_unit_limit=200000,loaded_accounts_data_size_limit=65536",serialized
+ed25519,operational,registered,4,468,470,480,"compute_unit_limit=200000,loaded_accounts_data_size_limit=65536",serialized
+ml-dsa-44,minimal,inline,2,4070,4072,4074,empty,serialized
+ml-dsa-44,minimal,registered,2,2758,2760,2762,empty,serialized
+ml-dsa-44,operational,inline,4,4136,4138,4148,"compute_unit_limit=200000,loaded_accounts_data_size_limit=65536",serialized
+ml-dsa-44,operational,registered,4,2824,2826,2836,"compute_unit_limit=200000,loaded_accounts_data_size_limit=65536",serialized
+ml-dsa-65,minimal,inline,2,5599,5601,5603,empty,serialized
+ml-dsa-65,minimal,registered,2,3647,3649,3651,empty,serialized
+ml-dsa-65,operational,inline,4,5665,5667,5677,"compute_unit_limit=200000,loaded_accounts_data_size_limit=65536",serialized
+ml-dsa-65,operational,registered,4,3713,3715,3725,"compute_unit_limit=200000,loaded_accounts_data_size_limit=65536",serialized
+slh-dsa-sha2-128s,minimal,inline,2,8226,8228,8230,empty,serialized
+slh-dsa-sha2-128s,minimal,registered,2,8194,8196,8198,empty,serialized
+slh-dsa-sha2-128s,operational,inline,4,8292,8294,8304,"compute_unit_limit=200000,loaded_accounts_data_size_limit=65536",serialized
+slh-dsa-sha2-128s,operational,registered,4,8260,8262,8272,"compute_unit_limit=200000,loaded_accounts_data_size_limit=65536",serialized

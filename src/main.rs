@@ -31,14 +31,19 @@ fn run_transport() {
         serde_json::to_string_pretty(&rows).expect("serialize transport"),
     )
     .unwrap_or_else(|e| panic!("write {path}: {e}"));
-    println!("== direct inclusion (serialized) ==");
-    println!("scheme              format  placement  sig      pk      total   limit  headroom");
+    println!("== direct inclusion (serialized; v1 uses the SDK wincode encoder) ==");
+    println!(
+        "scheme              template     format  placement  accounts  config  sig      pk      total   limit  headroom"
+    );
     for r in &rows {
         println!(
-            "{:<18} {:<7} {:<10} {:>7} {:>7} {:>7} {:>6} {:>8}",
+            "{:<18} {:<12} {:<7} {:<10} {:>8}  {:<6} {:>7} {:>7} {:>7} {:>6} {:>8}",
             r.scheme,
+            r.template,
             r.format,
             r.key_placement,
+            r.account_count,
+            if r.v1_config == "n/a" { "-" } else { "set" },
             r.signature_bytes,
             r.public_key_bytes,
             r.total_bytes,
@@ -56,15 +61,22 @@ fn run_transport() {
     .unwrap_or_else(|e| panic!("write {spath}: {e}"));
     println!();
     println!("== staged upload (modeled) ==");
-    println!("scheme              format  sig     chunk  chunks  total_tx  total_bytes  limit");
+    println!(
+        "scheme              format  sig     meta   chunk  chunks  init    upload  seal    auth    total_tx  total_bytes  limit"
+    );
     for r in &staged {
         println!(
-            "{:<18} {:<7} {:>6} {:>6} {:>7} {:>8} {:>12} {:>6}",
+            "{:<18} {:<7} {:>6} {:>6} {:>6} {:>7} {:>7} {:>7} {:>7} {:>7} {:>9} {:>12} {:>6}",
             r.scheme,
             r.format,
             r.signature_bytes,
+            r.session_metadata_bytes,
             r.chunk_bytes,
             r.chunk_count,
+            r.init_tx_bytes,
+            r.upload_tx_total_bytes,
+            r.seal_tx_bytes,
+            r.authorize_tx_bytes,
             r.total_transactions,
             r.total_transport_bytes,
             r.applicable_limit

@@ -15,7 +15,7 @@ evidence, and are never converted into Solana compute units.
 | `sign`, mode `byte` | signing via the serialized-byte adapter (includes per-call secret-key parse + allocation) | nothing inside the loop besides the adapter call |
 | `verify`, mode `prepared` | verification with a key parsed once via `Scheme::prepare_verifier` | key reconstruction/allocation |
 | `verify`, mode `byte` | verification via the byte adapter (includes per-call public-key parse + allocation) | nothing besides the adapter call |
-| complete authorization | *not in this harness* | M3.2 measures it separately |
+| complete authorization (registry lookup, decoding, policy, nonce) | *not yet measured* | this harness measures primitives only; an end-to-end authorization boundary is planned as a separate measurement |
 
 For `sign`/`verify`, keys and messages are prepared before the timed loop, and
 a fixture signature is produced and checked *once, outside* the loop. The

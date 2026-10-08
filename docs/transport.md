@@ -1,98 +1,134 @@
 # Solana transport analysis
 
 This documents the M4 transport measurements. The numbers are produced by
-`cargo run --release -- transport` and are the sizes of *actually serialized*
-transactions built with `solana-sdk` 5.0.0 (bincode wire format), not manual
-estimates.
+`cargo run --release -- transport` and written to `results/transport.json` and
+`results/transport-staged.json`.
 
-## What is measured
+## Wire encodings (important correction)
 
-For each of the four schemes and two key placements, a minimal transaction is
-built containing one application instruction whose data is the canonical
-withdrawal intent (166 bytes) plus the scheme's signature, plus — for the
-"inline" placement — the scheme's public key. The transaction has a single
-classical Ed25519 fee-payer signer and one program account (2 accounts total),
-a fixed blockhash, and one genuine native signature.
+- **legacy / v0** — classic Solana bincode wire format (`bincode` 1.3.3), which
+  matches the 1,232-byte packet limit.
+- **v1** — the SDK's own wire encoder, **not bincode**. `solana-message` 5.1.0
+  states for the v1 message type: *"This message format does not support bincode
+  binary serialization. Use the provided `serialize` and `deserialize`
+  functions."* This project serializes v1 with `wincode` 0.6.2 (the crate the
+  SDK uses) and decodes it back with the same, so the bytes are the actual wire
+  form: message-with-`0x81`-prefix first, then the fixed-length signature array
+  with no length prefix.
 
-- `total_bytes` — size of the serialized transaction.
-- `headroom` — `1232 - total_bytes` for legacy/v0 (the documented packet limit).
-- `evidence_type` — always `serialized`.
+A bincode-encoded v1 buffer is not a valid wire transaction and is rejected by
+the v1 decoder; `tests/transport.rs::bincode_v1_buffer_is_not_a_valid_wire_transaction`
+pins this. The superseded bincode-based v1 sizes are preserved in
+`results/transport.bincode-v1-superseded.json`.
 
-## Direct-inclusion results (host, solana-sdk 5.0.0, bincode)
+## Templates (minimal vs operational)
 
-| Scheme | sig | pk | inline (legacy/v0) | registered (legacy/v0) | Fits in 1232? |
-| --- | --- | --- | --- | --- | --- |
-| ed25519 | 64 | 32 | 434 / 436 | 402 / 404 | yes |
-| ml-dsa-44 | 2420 | 1312 | 4070 / 4072 | 2758 / 2760 | no |
-| ml-dsa-65 | 3309 | 1952 | 5599 / 5601 | 3647 / 3649 | no |
-| slh-dsa-sha2-128s | 7856 | 32 | 8226 / 8228 | 8194 / 8196 | no |
+Every direct row names a template so a payload floor is never confused with a
+realistic authorization transaction:
 
-**Observation (measured, not a conclusion about verification):** every
-post-quantum scheme here has a signature large enough that the authorization
-payload alone exceeds the legacy/v0 1,232-byte packet budget — even with the
-public key registered out-of-band. Registration removes exactly the public-key
-bytes per transaction but does not address the signature size.
+- **`minimal`** — fee payer + program (2 accounts), empty v1 config. The raw
+  payload + envelope floor.
+- **`operational`** — fee payer + read-only key-registry account + writable
+  authorization-state / nonce-ledger account + program (4 accounts). v1 rows
+  additionally set `compute_unit_limit = 200_000` and
+  `loaded_accounts_data_size_limit = 65_536` explicitly (an unset v1 field means
+  `0`).
 
-## Assumptions
+The signed intent is bound to the configured environment: the scheme byte is the
+row's scheme, the intent `program_id` equals the transaction's program account,
+and the intent `network_id` equals the configured `NETWORK_ID`.
 
-- **Fee payment** is a separate, classical Ed25519 concern; the fee payer here
-  is a native Solana keypair and its 64-byte signature is ordinary overhead.
-- **Key registration**: in the "registered" placement, the verification key is
-  assumed to already exist in trusted on-chain state keyed by the `key_id`
-  inside the intent; the transaction carries only the `key_id`. An inline key
-  still has to match a trusted registration or commitment — presence in a
-  request does not establish trust.
-- **Account lifecycle**: the two accounts (payer + program) are assumed to
-  exist; no rent/cleanup is modeled here (staged upload in M4.2).
-- **v1**: serialized with the SDK's `v1::Message` (`solana-sdk` 5.0.0). The
-  v1 limit is the SDK's `v1::MAX_TRANSACTION_SIZE` = 4,096 bytes.
-- A size result is a transport measurement, not an executed authorization and
-  not a claim about verification cost or compute units.
+## Direct-inclusion results (host, solana-sdk 5.0.0)
 
-## v1 direct-inclusion results
+Source: `results/transport.json`, evidence type `serialized`. The full table is
+generated into `docs/report.md` (§5.3) and `results/tables/transport_direct.*`.
+Highlights:
 
-v1's 4,096-byte limit changes the picture for the smaller post-quantum scheme:
+- Every post-quantum scheme's payload exceeds the legacy/v0 1,232-byte budget
+  even with the key registered (ML-DSA-44 = 2,758 B, ML-DSA-65 = 3,647 B,
+  SLH-DSA = 8,194 B; minimal template).
+- **v1 (4,096 B)** admits ML-DSA-44: 2,762 B registered or 4,074 B inline on the
+  **minimal** template. On the **operational** template ML-DSA-44 is 2,836 B
+  registered but 4,148 B inline — **52 bytes over the limit**. ML-DSA-65 fits
+  only when registered (3,651 / 3,725 B). SLH-DSA-SHA2-128s does not fit.
+- Registration removes exactly the public-key bytes per transaction.
 
-| Scheme | inline (v1) | registered (v1) | Fits in v1? |
-| --- | --- | --- | --- |
-| ed25519 | 419 | 421 | yes |
-| ml-dsa-44 | 4089 | 2777 | inline barely (7-byte headroom); registered yes |
-| ml-dsa-65 | 5618 | 3666 | inline no; registered yes |
-| slh-dsa-sha2-128s | 8245 | 8213 | no |
+### Reproducing the reviewer's v1 diagnostic ladder
 
-ML-DSA-44 fits in v1 (inline by 7 bytes; comfortably when registered);
-ML-DSA-65 fits only when registered; SLH-DSA-SHA2-128s still does not fit.
+Independent reviewer probes of the v1 wire encoder for the ML-DSA-44 inline
+payload (166-byte intent + 2,420-byte signature + 1,312-byte key) are reproduced
+by `tests/transport.rs::v1_wire_size_matches_the_reviewer_probe_ladder`:
+
+| Construction | v1 wire bytes | delta |
+| --- | --- | --- |
+| 2 accounts, empty config | 4,074 | — |
+| 2 accounts, +2 resource-limit fields (u32 ×2) | 4,082 | +8 |
+| 3 accounts (+1 state), +2 resource-limit fields | 4,115 | +33 (32-byte address + 1-byte index) |
+
+The operational 4-account template used by the analysis (registry + state) is
+4,148 = 4,115 + 33. These values describe this specific one-instruction
+template; they are regression pins, not universal constants. A bincode buffer of
+the same payload is 4,089 bytes and is rejected by the v1 decoder.
 
 ## Staged upload (modeled)
 
-Staged uploads split the signature across multiple "store chunk" transactions
-(initialization, N chunk uploads, and a final reference transaction). The
-largest safe chunk per format is derived by binary search over the
-actually-serialized upload-transaction template (a 3-account transaction: fee
-payer + program + storage account), with a stated margin of zero because the
-template already includes all accounts, signatures, and framing.
+Staged upload moves the signature into an on-chain session account so that no
+single transaction must carry it. The protocol is defined and serialized here;
+the lifecycle is **not** executed.
 
-| Scheme | format | sig | chunk | chunks | transactions | total transport bytes |
-| --- | --- | --- | --- | --- | --- | --- |
-| ml-dsa-44 | legacy/v0 | 2420 | 1027/1025 | 3 | 5 | 3611/3621 |
-| ml-dsa-44 | v1 | 2420 | 3872 | 1 | 3 | 3258 |
-| ml-dsa-65 | legacy/v0 | 3309 | 1027/1025 | 4 | 6 | 4705/4717 |
-| ml-dsa-65 | v1 | 3309 | 3872 | 1 | 3 | 4147 |
-| slh-dsa-sha2-128s | legacy/v0 | 7856 | 1027/1025 | 8 | 10 | 10072/10092 |
-| slh-dsa-sha2-128s | v1 | 7856 | 3872 | 3 | 5 | 9141 |
+### Protocol
 
-**Observation (modeled):** staging makes each individual transaction fit the
-format limit, but it increases the *total* transported bytes (per-transaction
-overhead is repeated) and introduces on-chain storage and upload state. It does
-not address verification cost. Storage bytes equal the signature size; the
-upload lifecycle itself is a model, not an executed sequence, and the
-initialization/upload/final transactions are serialized but not executed.
+Instruction tags and encodings (little-endian u32 fields):
 
-## Direct vs staged
+| Tag | Instruction | Data |
+| --- | --- | --- |
+| 1 | `Init` | `session_id[32] ‖ key_id u32 ‖ expected_len u32 ‖ uploader[32]` |
+| 2 | `Write` | `session_id[32] ‖ offset u32 ‖ chunk[N]` |
+| 3 | `Seal` | `session_id[32] ‖ total_len u32` |
+| 4 | `Authorize` | `session_id[32] ‖ key_id u32 ‖ intent[166]` |
 
-- Direct inclusion is one transaction but fails the limit for every
-  post-quantum scheme here (in legacy/v0, and for ML-DSA-65/SLH-DSA in v1).
-- Staged upload always fits per transaction, at the cost of more total bytes,
-  more transactions, and on-chain state.
-- Neither approach changes the fact that the signature must still be verified
-  on chain.
+Policy the program enforces (stated, not executed here):
+
+- **Account binding / uploader:** the session account is keyed by `session_id`;
+  `Init` binds the authorized `uploader`, which must sign `Write`/`Seal`.
+- **Registered-key binding:** `Init` and `Authorize` carry `key_id`, resolved
+  against the trusted registry account; the key material is never transported.
+- **Expected length / position:** `Init` fixes `expected_len`; each `Write` must
+  use `offset == bytes_written` (sequential, append-only).
+- **Sealing / overwrite:** `Seal` requires `total_len == expected_len`, sets the
+  sealed flag, and rejects any later `Write`.
+- **Final authorization:** `Authorize` requires a sealed session of the exact
+  expected length, then verifies the stored signature over the supplied intent
+  and consumes the nonce in the authorization-state account.
+
+### Modeled sizes
+
+Source: `results/transport-staged.json`, evidence type `modeled`. The chunk
+capacity is the largest `Write` payload such that the **complete serialized
+`Write` transaction** (accounts, signature, config, and the 37-byte `Write`
+framing) fits the format limit; `tests/transport.rs` re-derives the boundary and
+checks maximality.
+
+**Included:** `Init`, all `Write`, `Seal`, and `Authorize` transaction wire
+bytes; session metadata (77 B: session id + uploader + key id + expected length
++ bytes-written + sealed flag) plus the signature as storage.
+**Excluded:** key registration, account creation and rent, cleanup/close, and
+compute.
+
+This is a **lower-bound** model: a real uploader would also pay rent for the
+session account over its lifetime and the cost of registering the key. Staging
+makes each transaction fit (legacy/v0 chunk ~957 B, v1 ~3,809 B) but increases
+total transported bytes and adds on-chain state; it does not reduce verification
+cost. A size result is a transport measurement, not an executed authorization.
+
+## Assumptions
+
+- **Fee payment** is a separate, classical Ed25519 concern; the fee payer is a
+  native Solana keypair and its 64-byte signature is ordinary overhead.
+- **Key registration**: in the "registered" placement the verification key is
+  assumed to already exist in trusted on-chain state keyed by the intent's
+  `key_id`; the transaction carries only the `key_id`. An inline key must still
+  match a trusted registration or commitment — presence in a request does not
+  establish trust.
+- **v1**: serialized with the SDK's `wincode` encoder; the v1 limit is the SDK's
+  `v1::MAX_TRANSACTION_SIZE` = 4,096 bytes.

@@ -23,3 +23,5 @@ jobs:
       # benchmark profiles and the sBPF experiment are explicit and out of CI).
       - run: cargo run --release --locked -- demo
       - run: cargo run --release --locked -- transport
+      # Published report tables must match the committed raw/serialized evidence.
+      - run: python3 scripts/report_tables.py check
