@@ -26,38 +26,39 @@ Error: Function _ZN7fips2049ml_dsa_44104_$LT$impl$u20$fips204..traits..SerDes$u2
 
 Error: Function _ZN7fips2049ml_dsa_44104_$LT$impl$u20$fips204..traits..SerDes$u20$for$u20$fips204..types..PublicKey$LT$4_usize$C$4_usize$GT$$GT$10into_bytes17h5aa649521c1f7dcfE Stack offset of 20488 exceeded max offset of 4096 by 16392 bytes, please minimize large stack variables. Estimated function frame size: 20544 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
 
+   Compiling sbpf-verifier v0.1.0 (/Users/mansitibrewal/chronicles/pq-solana-lab/experiments/sbpf-verifier)
 warning: unexpected `cfg` condition value: `custom-heap`
- --> src/lib.rs:8:1
-  |
-8 | entrypoint!(process_instruction);
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  |
-  = note: no expected values for `feature`
-  = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
-  = help: try referring to `$crate::custom_heap_default` crate for guidance on how handle this unexpected cfg
-  = help: the macro `$crate::custom_heap_default` may come from an old version of the `solana_program_entrypoint` crate, try updating your dependency with `cargo update -p solana_program_entrypoint`
-  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
-  = note: `#[warn(unexpected_cfgs)]` on by default
-  = note: this warning originates in the macro `$crate::custom_heap_default` which comes from the expansion of the macro `entrypoint` (in Nightly builds, run with -Z macro-backtrace for more info)
+  --> src/lib.rs:23:1
+   |
+23 | entrypoint!(process_instruction);
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: no expected values for `feature`
+   = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `$crate::custom_heap_default` crate for guidance on how handle this unexpected cfg
+   = help: the macro `$crate::custom_heap_default` may come from an old version of the `solana_program_entrypoint` crate, try updating your dependency with `cargo update -p solana_program_entrypoint`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: `#[warn(unexpected_cfgs)]` on by default
+   = note: this warning originates in the macro `$crate::custom_heap_default` which comes from the expansion of the macro `entrypoint` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 warning: unexpected `cfg` condition value: `custom-panic`
- --> src/lib.rs:8:1
-  |
-8 | entrypoint!(process_instruction);
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  |
-  = note: no expected values for `feature`
-  = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
-  = help: try referring to `$crate::custom_panic_default` crate for guidance on how handle this unexpected cfg
-  = help: the macro `$crate::custom_panic_default` may come from an old version of the `solana_program_entrypoint` crate, try updating your dependency with `cargo update -p solana_program_entrypoint`
-  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
-  = note: this warning originates in the macro `$crate::custom_panic_default` which comes from the expansion of the macro `entrypoint` (in Nightly builds, run with -Z macro-backtrace for more info)
+  --> src/lib.rs:23:1
+   |
+23 | entrypoint!(process_instruction);
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: no expected values for `feature`
+   = note: using a cfg inside a macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `$crate::custom_panic_default` crate for guidance on how handle this unexpected cfg
+   = help: the macro `$crate::custom_panic_default` may come from an old version of the `solana_program_entrypoint` crate, try updating your dependency with `cargo update -p solana_program_entrypoint`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: this warning originates in the macro `$crate::custom_panic_default` which comes from the expansion of the macro `entrypoint` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-Error: Function entrypoint Stack offset of 4160 exceeded max offset of 4096 by 64 bytes, please minimize large stack variables. Estimated function frame size: 10880 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
+Error: Function _ZN13sbpf_verifier12verify_slice17hd5d84500511c43fdE Stack offset of 8376 exceeded max offset of 4096 by 4280 bytes, please minimize large stack variables. Estimated function frame size: 12160 bytes. Exceeding the maximum stack offset may cause undefined behavior during execution.
 
-Error: A function call in method entrypoint overwrites values in the frame. Please, decrease stack usage or remove parameters from the call. The function call may cause undefined behavior during execution.
+Error: A function call in method _ZN13sbpf_verifier12verify_slice17hd5d84500511c43fdE overwrites values in the frame. Please, decrease stack usage or remove parameters from the call. The function call may cause undefined behavior during execution.
 
-Error: A function call in method entrypoint overwrites values in the frame. Please, decrease stack usage or remove parameters from the call. The function call may cause undefined behavior during execution.
+Error: A function call in method _ZN13sbpf_verifier12verify_slice17hd5d84500511c43fdE overwrites values in the frame. Please, decrease stack usage or remove parameters from the call. The function call may cause undefined behavior during execution.
 
 warning: `sbpf-verifier` (lib) generated 2 warnings
-    Finished `release` profile [optimized] target(s) in 0.21s
+    Finished `release` profile [optimized] target(s) in 0.89s

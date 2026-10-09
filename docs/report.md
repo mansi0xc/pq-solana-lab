@@ -27,10 +27,14 @@ either:
    2,836. ML-DSA-65 fits v1 only when registered (3,651 minimal / 3,725
    operational). SLH-DSA does not fit at any tested placement.
 2. **Verification resources limit execution.** The `fips204` 0.4.6 ML-DSA-44
-   verifier compiles for sBPF but is rejected by the 4,096-byte stack-frame
-   check (`verify_internal` alone has a ~62 KB frame). No execution occurred, so
-   no compute-unit numbers exist. This is one implementation under one
-   toolchain, not a universal infeasibility result.
+   verifier compiles for sBPF (with stack-frame diagnostics: `verify_internal`
+   ~62 KB), **loads and deploys successfully** on a local validator, and then
+   **aborts at runtime with an access violation in a stack frame** after 418
+   compute units — before producing any verdict. A second, independent
+   implementation (RustCrypto `ml-dsa` 0.1.1) behaves the same way under the
+   same configuration. A control program executes normally (539 CUs), so the
+   failure is specific to the verifiers, not the harness. This is one toolchain
+   and one runtime; no completed-verification compute figure exists.
 3. **Integration choices shift but do not eliminate cost.** Registering the key
    saves exactly the public-key bytes per transaction; staging the signature
    makes each transaction fit but raises total transport bytes and adds on-chain
@@ -54,7 +58,12 @@ are preserved under `results/transport.bincode-v1-superseded.json`.
   used as known-answer evidence.
 - **Libraries** (reused, not reimplemented): `fips204` 0.4.6 and `fips205` 0.4.1
   (IntegrityChain, pure Rust), `ed25519-dalek` 3.0.0, and — for independent
-  ML-DSA conformance — the RustCrypto `ml-dsa` 0.1.1 crate.
+  ML-DSA conformance and for the controlled verifier comparison — the RustCrypto
+  `ml-dsa` 0.1.1 crate.
+- **Solana execution.** `solana-cargo-build-sbf` 3.1.10 / platform-tools v1.52
+  compile to sBPF; `solana-sbpf` 0.13.1 is the SBF VM and loader verifier Agave
+  3.1.x pins; `solana-test-validator` 3.1.10 provides the local runtime used for
+  the deploy/execute evidence.
 - **Solana transaction formats.** `solana-sdk` 5.0.0 and the split crates it
   depends on (`solana-message` 5.1.0, `solana-transaction` 5.1.0) define the
   legacy/v0 (bincode) and v1 (`wincode`, SIMD-0385) wire formats.
@@ -255,13 +264,22 @@ _Source: independent runs `full-r1`, `full-r2`, `full-r3` (`configs/full.json`),
 | SLH-DSA-SHA2-128s | authorize | 501.5 µs | 503.8 µs | 505.2 µs | 0.7% |
 <!-- END GENERATED: between_runs -->
 
-### 5.7 Verifier feasibility (blocked before execution)
+### 5.7 Verifier feasibility (loads and deploys; traps at execution)
 
-`fips204` 0.4.6 ML-DSA-44 verification compiles for sBPF but is rejected by the
-4,096-byte stack-frame check. `verify_internal` has a ~62 KB frame,
-`PublicKey::try_from_bytes` ~24 KB, `ntt::ntt` ~8.3 KB, and the program
-`entrypoint` ~10.9 KB. Full log: `experiments/sbpf-verifier/build.log`. No
-compute measurements exist because the program never executed.
+`cargo-build-sbf` exits 0 for the `fips204` ML-DSA-44 verifier while emitting
+stack-frame diagnostics (`verify_internal` ~62 KB, `PublicKey::try_from_bytes`
+~24 KB, `ntt::ntt` ~8.3 KB; `experiments/sbpf-verifier/build.log`). Those are
+**compiler** diagnostics, not loader rejection: the Agave SBF VM loads the ELF
+and passes `RequisiteVerifier`, the program deploys to a local validator
+(exit 0), and a control program executes normally (539 CU). On invocation with a
+genuine fixture, the verifier **aborts at runtime** after 418 CU with
+`Access violation in stack frame 3` — before any verdict, so valid, altered, and
+invalid inputs fail identically. The controlled comparison (RustCrypto
+`ml-dsa` 0.1.1, same parameter set/mode/fixture/toolchain/runtime) also loads,
+verifies, deploys, and then aborts (access violation in the program section,
+323 CU). No completed-verification compute figure exists. Evidence:
+`experiments/outcome/`; analysis: `docs/solana-feasibility.md`,
+`docs/technical-note.md`.
 
 ## 6. Security argument (conditional application argument)
 
@@ -331,8 +349,14 @@ rejected while state is left unchanged on rejection — nothing more.
   executed); registration, account rent, cleanup, and compute are excluded.
 - The v1 `wincode` encoding is exercised only through the SDK's own encoder and
   decoder; no validator accepted or executed these transactions.
-- The sBPF blocker is specific to `fips204` 0.4.6 under the stated toolchain; a
-  heap-allocating verifier might differ. No universal infeasibility is claimed.
+- The sBPF result is a runtime access violation before any verdict, for two
+  library builds under one toolchain and one local validator. A heap-allocating
+  verifier might differ. No universal infeasibility, and no completed-verification
+  compute figure, is claimed.
+- The local-validator harness supplies the oversized fixture through account
+  data because the RPC enforces the 1,232-byte packet limit; v1 transactions
+  were not accepted by this validator's RPC, so no v1 transaction was executed
+  on chain.
 - ML-DSA-65 and SLH-DSA lack independent conformance checks (only ML-DSA-44 has
   the cross-implementation interop test).
 - The threshold-paper claim is cited from its abstract; a specific numbered

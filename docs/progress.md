@@ -8,11 +8,12 @@
 | M2: Authorization semantics | Complete (committed) | encoding (6), authorization (24), Ed25519 RFC 8032 known-answer (1) tests; demo genuine |
 | M3: Benchmark protocol | Complete (committed) | 4 schemes benchmarked; ML-DSA interop cross-check (3 tests); raw→summary consistency test |
 | M4: Solana transport analysis | Complete; **revised in correction batch 1** | legacy/v0 bincode + v1 `wincode`; minimal/operational templates; serialized staged protocol; 20 transport tests |
-| M5: sBPF verifier experiment | Complete (reproducible blocker) | `fips204` ML-DSA-44 compiles for sBF but exceeds the 4,096-byte stack-frame check (`verify_internal` ~62 KB); no execution |
+| M5: sBPF verifier experiment | Complete; **corrected in Batch 3** | compiler emits stack-frame diagnostics (exit 0); ELF loads/verifies; deploys to a local validator; **aborts at runtime** (access violation) before any verdict |
 | M6: Results and report | Complete; **revised in correction batch 1** | full profile: 94,545 raw rows + 100 summary rows; 3 plots; generated tables; report; AI-usage doc |
 | M7: Release | Complete; **revised in correction batch 1** | README; CI; short demo + separate benchmark pilot; demo outline; interview Q&A |
 | Correction batch 1 (reviewer findings on `71b171f`) | Complete (committed `dd9d971`) | v1 wire encoding fixed; staged protocol defined; report statistics regenerated; security wording corrected |
-| Correction batch 2 (benchmarking) | Complete (pending author review/commit) | `black_box` + result validation; four measurement boundaries; provenance capture; three independent full runs (`full-r1`–`full-r3`) |
+| Correction batch 2 (benchmarking) | Complete (committed `05389df`) | `black_box` + result validation; four measurement boundaries; provenance capture; three independent full runs (`full-r1`–`full-r3`) |
+| Correction batch 3 (sBPF outcome, comparison, note) | Complete (pending author review/commit) | control program executes; verifiers load/verify/deploy then **trap at runtime**; RustCrypto comparison; `docs/technical-note.md` |
 
 Counts in the historical sections below describe the state at each milestone;
 the current suite is **78 tests** (`cargo test --release --locked`, all green).
@@ -428,8 +429,45 @@ tests); `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --locked`; `cargo run
 `python3 scripts/plot_results.py …`; `python3 scripts/report_tables.py
 check`; `git diff --check`.
 
+## Correction batch 3 — actual sBPF outcome, controlled comparison, technical note
+
+Fixes the reviewer's finding that the compiler log did not establish loader
+rejection, and that no execution had been attempted.
+
+1. **Control program.** `experiments/sbpf-control/` (minimal no-op) builds with
+   **no** frame diagnostics (17,320-byte ELF) and **executes** on a local
+   validator: `sbpf-control: ok`, 539 CU.
+2. **Loader evidence.** A host harness (`experiments/loader-harness/`, using the
+   Agave SBF VM `solana-sbpf` 0.13.1 and `RequisiteVerifier`) loads both verifier
+   ELFs and **passes verification** — the compiler diagnostics are not loader
+   rejection.
+3. **Authentic load + execute.** On `solana-test-validator` 3.1.10, both
+   verifier programs **deploy successfully** (exit 0) and then **abort at
+   runtime** with an access violation before any verdict: `fips204` — "Access
+   violation in stack frame 3" after 418 CU; RustCrypto `ml-dsa` — "Access
+   violation in program section" after 323 CU. Valid / altered / invalid inputs
+   fail identically; no completed-verification compute figure exists. The
+   oversized fixture is supplied through account data because the RPC enforces
+   the 1,232-byte packet limit.
+4. **Controlled comparison.** `experiments/sbpf-verifier-rustcrypto/` is the same
+   program structure using RustCrypto `ml-dsa` 0.1.1 (same parameter set, mode,
+   fixture, toolchain, runtime): 2 frame diagnostics instead of 17, but the same
+   deploy-then-trap outcome. Unsupported comparisons are left incomplete.
+5. **Technical note.** `docs/technical-note.md` covers rejection sampling,
+   EUF-CMA vs SUF-CMA, the authorization/replay argument, why staged transport
+   does not establish verifier feasibility, a specific FIPS 204 definition and
+   requirement (§3.1, §3.6.2) with exact references, the experiment's limits, and
+   a self-test.
+6. **Docs corrected.** `docs/solana-feasibility.md`, `docs/report.md` (§1, §2,
+   §5.7, §7), and `README.md` no longer claim loader rejection.
+
+Commands run for this batch: `cargo-build-sbf` (control, fips204, rustcrypto);
+`loader-harness probe`; `solana program deploy`; `experiments/outcome/invoke.sh`
+— logs in `experiments/outcome/`. Root checks: `cargo fmt --check`; `cargo
+clippy --release --all-targets --locked -- -D warnings`; `cargo test --release
+--locked` (78 tests); `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --locked`;
+`python3 scripts/report_tables.py check`; `git diff --check`.
+
 ## Next action
 
-Correction batches 1 and 2 are complete and await the author's review and
-commit. Batch 3 (sBPF loader outcome, a controlled implementation comparison,
-and a technical note) begins only after that checkpoint.
+Correction batches 1–3 are complete and await the author's review and commit.

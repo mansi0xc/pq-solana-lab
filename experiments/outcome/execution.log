@@ -1,0 +1,76 @@
+# local-validator execution of the deployed programs
+# date: 2026-10-09T11:12:04Z
+# validator: 3.1.10
+# solana-cargo-build-sbf: solana-cargo-build-sbf 3.1.10 platform-tools v1.52 rustc 1.89.0 
+
+$ solana airdrop 100 HgGFxEwyHEhUJzbZPZ9MowLr4z5iwkYv66Q29LX4YxKL
+100 SOL
+
+$ solana program deploy sbpf_control.so
+Program Id: 8rgtPTezeDn6ZJtdeDCKhKiRL9pq92hNXxK2kmPEvoj6
+Signature: 3GGxNU9HtpWrgP4PRvKArkCJFT5WxVsBy1ue3zUFf3vJxLEmr8ze3WoanKQG3BRDXDceXGcTPM9KaUxrGm8quT2c
+deploy exit=0
+
+$ solana program deploy sbpf_verifier.so
+Program Id: 8CgWp1LbNhAhx8Rwt5Haxby5VyhaS7Z6hTxsqc7xH4Qp
+Signature: 2d5FYrZHo4t8GwcLAmGoQmS56HnAgGoKxxfszYhycBKRjQP49fDtK2ZMqBacqnhXyxfvWFTwCnnuY3YUrq4i2wdq
+deploy exit=0
+
+--- control: 32-byte instruction data ---
+program : 8rgtPTezeDn6ZJtdeDCKhKiRL9pq92hNXxK2kmPEvoj6
+data    : experiments/loader-harness/fixtures/small.bin (32 bytes)  accounts: none
+send    : 2BiQpGhMwPTMShvS2LVK79Q7L2W22gazpZCrjPtABh5PFiCjiQerNA7BrBUwdY62zJj6JzQJ32fswi8yjMcZ9Se6
+err     : null
+compute : 539
+status  : SUCCESS
+  log   : Program 8rgtPTezeDn6ZJtdeDCKhKiRL9pq92hNXxK2kmPEvoj6 invoke [1]
+  log   : Program log: sbpf-control: ok (32 bytes of instruction data)
+  log   : Program 8rgtPTezeDn6ZJtdeDCKhKiRL9pq92hNXxK2kmPEvoj6 consumed 539 of 200000 compute units
+  log   : Program 8rgtPTezeDn6ZJtdeDCKhKiRL9pq92hNXxK2kmPEvoj6 success
+
+--- verifier: valid signature (account data) ---
+program : 8CgWp1LbNhAhx8Rwt5Haxby5VyhaS7Z6hTxsqc7xH4Qp
+data    : experiments/loader-harness/fixtures/empty.bin (0 bytes)  accounts: 95P7k5dQDGN7Me6sxR2UbPhxCefzEndXvpSL3wt8NKYX
+send    : ERROR:{"code": -32002, "message": "Transaction simulation failed: Error processing Instruction 0: Program failed to complete", "data": {"accounts": null, "err": {"InstructionError": [0, "ProgramFailedToComplete"]}, "fee": 5000, "innerInstructions": null, "loadedAccountsDataSize": 84744, "loadedAddresses": null, "logs": ["Program 8CgWp1LbNhAhx8Rwt5Haxby5VyhaS7Z6hTxsqc7xH4Qp invoke [1]", "Program 8CgWp1LbNhAhx8Rwt5Haxby5VyhaS7Z6hTxsqc7xH4Qp consumed 418 of 200000 compute units", "Program 8CgWp1LbNhAhx8Rwt5Haxby5VyhaS7Z6hTxsqc7xH4Qp failed: Access violation in stack frame 3 at address 0x200003400 of size 1024"], "postBalances": null, "postTokenBalances": null, "preBalances": null, "preTokenBalances": null, "replacementBlockhash": null, "returnData": null, "unitsConsumed": 418}}
+
+--- verifier: altered message (account data) ---
+program : 8CgWp1LbNhAhx8Rwt5Haxby5VyhaS7Z6hTxsqc7xH4Qp
+data    : experiments/loader-harness/fixtures/empty.bin (0 bytes)  accounts: 2zNX5QiByW5eGc8j1vJSwduaarV6xR196Q95yEHVf1vC
+send    : ERROR:{"code": -32002, "message": "Transaction simulation failed: Error processing Instruction 0: Program failed to complete", "data": {"accounts": null, "err": {"InstructionError": [0, "ProgramFailedToComplete"]}, "fee": 5000, "innerInstructions": null, "loadedAccountsDataSize": 84744, "loadedAddresses": null, "logs": ["Program 8CgWp1LbNhAhx8Rwt5Haxby5VyhaS7Z6hTxsqc7xH4Qp invoke [1]", "Program 8CgWp1LbNhAhx8Rwt5Haxby5VyhaS7Z6hTxsqc7xH4Qp consumed 418 of 200000 compute units", "Program 8CgWp1LbNhAhx8Rwt5Haxby5VyhaS7Z6hTxsqc7xH4Qp failed: Access violation in stack frame 3 at address 0x200003400 of size 1024"], "postBalances": null, "postTokenBalances": null, "preBalances": null, "preTokenBalances": null, "replacementBlockhash": null, "returnData": null, "unitsConsumed": 418}}
+
+--- verifier: invalid signature (account data) ---
+program : 8CgWp1LbNhAhx8Rwt5Haxby5VyhaS7Z6hTxsqc7xH4Qp
+data    : experiments/loader-harness/fixtures/empty.bin (0 bytes)  accounts: Epi83YFVpZnBB5jvN5m3yqAHe4ZZXYeBwBwSvS42syx1
+send    : ERROR:{"code": -32002, "message": "Transaction simulation failed: Error processing Instruction 0: Program failed to complete", "data": {"accounts": null, "err": {"InstructionError": [0, "ProgramFailedToComplete"]}, "fee": 5000, "innerInstructions": null, "loadedAccountsDataSize": 84744, "loadedAddresses": null, "logs": ["Program 8CgWp1LbNhAhx8Rwt5Haxby5VyhaS7Z6hTxsqc7xH4Qp invoke [1]", "Program 8CgWp1LbNhAhx8Rwt5Haxby5VyhaS7Z6hTxsqc7xH4Qp consumed 418 of 200000 compute units", "Program 8CgWp1LbNhAhx8Rwt5Haxby5VyhaS7Z6hTxsqc7xH4Qp failed: Access violation in stack frame 3 at address 0x200003400 of size 1024"], "postBalances": null, "postTokenBalances": null, "preBalances": null, "preTokenBalances": null, "replacementBlockhash": null, "returnData": null, "unitsConsumed": 418}}
+
+
+$ solana program deploy sbpf_verifier_rustcrypto.so
+Program Id: AXxaUKzVDsXXveVye6rZrhg46EghxEbMxzZ8iCKNEm7L
+Signature: 4M7Vadxy98NMb88G4QhEtNZBiaNN3yNuq63RLjGZeQULNdAropDrZkLvVKsVDGCwdyH2yaQsq2M3YYezq1bGeAWz
+deploy exit=0
+
+--- rustcrypto verifier: valid signature ---
+program : AXxaUKzVDsXXveVye6rZrhg46EghxEbMxzZ8iCKNEm7L
+data    : experiments/loader-harness/fixtures/empty.bin (0 bytes)  accounts: 95P7k5dQDGN7Me6sxR2UbPhxCefzEndXvpSL3wt8NKYX
+send    : ERROR:{"code": -32002, "message": "Transaction simulation failed: Attempt to load a program that does not exist", "data": {"accounts": null, "err": "ProgramAccountNotFound", "fee": 5000, "innerInstructions": null, "loadedAccountsDataSize": 0, "loadedAddresses": null, "logs": [], "postBalances": null, "postTokenBalances": null, "preBalances": null, "preTokenBalances": null, "replacementBlockhash": null, "returnData": null, "unitsConsumed": 0}}
+
+--- rustcrypto verifier: altered message ---
+program : AXxaUKzVDsXXveVye6rZrhg46EghxEbMxzZ8iCKNEm7L
+data    : experiments/loader-harness/fixtures/empty.bin (0 bytes)  accounts: 2zNX5QiByW5eGc8j1vJSwduaarV6xR196Q95yEHVf1vC
+send    : ERROR:{"code": -32002, "message": "Transaction simulation failed: Attempt to load a program that does not exist", "data": {"accounts": null, "err": "ProgramAccountNotFound", "fee": 5000, "innerInstructions": null, "loadedAccountsDataSize": 0, "loadedAddresses": null, "logs": [], "postBalances": null, "postTokenBalances": null, "preBalances": null, "preTokenBalances": null, "replacementBlockhash": null, "returnData": null, "unitsConsumed": 0}}
+
+--- rustcrypto verifier: valid signature ---
+program : AXxaUKzVDsXXveVye6rZrhg46EghxEbMxzZ8iCKNEm7L
+data    : experiments/loader-harness/fixtures/empty.bin (0 bytes)  accounts: 95P7k5dQDGN7Me6sxR2UbPhxCefzEndXvpSL3wt8NKYX
+send    : ERROR:{"code": -32002, "message": "Transaction simulation failed: Error processing Instruction 0: Program failed to complete", "data": {"accounts": null, "err": {"InstructionError": [0, "ProgramFailedToComplete"]}, "fee": 5000, "innerInstructions": null, "loadedAccountsDataSize": 94904, "loadedAddresses": null, "logs": ["Program AXxaUKzVDsXXveVye6rZrhg46EghxEbMxzZ8iCKNEm7L invoke [1]", "Program AXxaUKzVDsXXveVye6rZrhg46EghxEbMxzZ8iCKNEm7L consumed 323 of 200000 compute units", "Program AXxaUKzVDsXXveVye6rZrhg46EghxEbMxzZ8iCKNEm7L failed: Access violation in program section at address 0x1ffffdbca of size 1"], "postBalances": null, "postTokenBalances": null, "preBalances": null, "preTokenBalances": null, "replacementBlockhash": null, "returnData": null, "unitsConsumed": 200000}}
+
+--- rustcrypto verifier: altered message ---
+program : AXxaUKzVDsXXveVye6rZrhg46EghxEbMxzZ8iCKNEm7L
+data    : experiments/loader-harness/fixtures/empty.bin (0 bytes)  accounts: 2zNX5QiByW5eGc8j1vJSwduaarV6xR196Q95yEHVf1vC
+send    : ERROR:{"code": -32002, "message": "Transaction simulation failed: Error processing Instruction 0: Program failed to complete", "data": {"accounts": null, "err": {"InstructionError": [0, "ProgramFailedToComplete"]}, "fee": 5000, "innerInstructions": null, "loadedAccountsDataSize": 94904, "loadedAddresses": null, "logs": ["Program AXxaUKzVDsXXveVye6rZrhg46EghxEbMxzZ8iCKNEm7L invoke [1]", "Program AXxaUKzVDsXXveVye6rZrhg46EghxEbMxzZ8iCKNEm7L consumed 323 of 200000 compute units", "Program AXxaUKzVDsXXveVye6rZrhg46EghxEbMxzZ8iCKNEm7L failed: Access violation in program section at address 0x1ffffdbca of size 1"], "postBalances": null, "postTokenBalances": null, "preBalances": null, "preTokenBalances": null, "replacementBlockhash": null, "returnData": null, "unitsConsumed": 200000}}
+
+--- rustcrypto verifier: invalid signature ---
+program : AXxaUKzVDsXXveVye6rZrhg46EghxEbMxzZ8iCKNEm7L
+data    : experiments/loader-harness/fixtures/empty.bin (0 bytes)  accounts: Epi83YFVpZnBB5jvN5m3yqAHe4ZZXYeBwBwSvS42syx1
+send    : ERROR:{"code": -32002, "message": "Transaction simulation failed: Error processing Instruction 0: Program failed to complete", "data": {"accounts": null, "err": {"InstructionError": [0, "ProgramFailedToComplete"]}, "fee": 5000, "innerInstructions": null, "loadedAccountsDataSize": 94904, "loadedAddresses": null, "logs": ["Program AXxaUKzVDsXXveVye6rZrhg46EghxEbMxzZ8iCKNEm7L invoke [1]", "Program AXxaUKzVDsXXveVye6rZrhg46EghxEbMxzZ8iCKNEm7L consumed 323 of 200000 compute units", "Program AXxaUKzVDsXXveVye6rZrhg46EghxEbMxzZ8iCKNEm7L failed: Access violation in program section at address 0x1ffffdbca of size 1"], "postBalances": null, "postTokenBalances": null, "preBalances": null, "preTokenBalances": null, "replacementBlockhash": null, "returnData": null, "unitsConsumed": 200000}}
+

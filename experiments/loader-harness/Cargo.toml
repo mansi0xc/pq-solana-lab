@@ -1,0 +1,15 @@
+[package]
+name = "loader-harness"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# The SBF VM crate used by the Agave runtime loader (Agave 3.1.x pins
+# solana-sbpf =0.13.1). Loading + verifying an ELF here reproduces the
+# loader's ELF verification step without a full validator.
+solana-sbpf = { version = "=0.13.1", default-features = false }
+# Same ML-DSA implementation as the main crate, to produce a genuine fixture.
+fips204 = { version = "=0.4.6", default-features = false, features = [
+    "default-rng",
+    "ml-dsa-44",
+] }

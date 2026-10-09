@@ -1,0 +1,15 @@
+[package]
+name = "sbpf-control"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+solana-program = "=5.1.0"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1

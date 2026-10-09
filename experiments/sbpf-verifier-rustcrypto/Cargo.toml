@@ -1,0 +1,19 @@
+[package]
+name = "sbpf-verifier-rustcrypto"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+solana-program = "=5.1.0"
+# The independent RustCrypto FIPS 204 (final) implementation already used for
+# the interop cross-check. Verification-only (no getrandom/pkcs8); `alloc` is
+# needed because the crate is not fully no_std without it.
+ml-dsa = { version = "=0.1.1", default-features = false, features = ["alloc"] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1

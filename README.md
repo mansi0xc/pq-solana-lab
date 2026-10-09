@@ -23,10 +23,12 @@ or 4,074 bytes inline on a minimal two-account template — but an *operational*
 template (a key-registry account, an authorization-state account, and explicit
 compute/loaded-data limits) pushes the inline case to 4,148 bytes, 52 bytes over
 the limit. Separately, the `fips204` ML-DSA-44 verifier compiles for Solana's
-sBPF but is rejected by its 4,096-byte stack-frame check (`verify_internal`
-~62 KB) — so verification resources, not only transport, limit it. Scope: one
-implementation (`fips204` 0.4.6) on one machine; host timings are never
-converted into compute units; no universal infeasibility is claimed.
+sBPF (with stack-frame diagnostics), **loads and deploys successfully** on a
+local validator, and then **aborts at runtime** with an access violation before
+any verdict (418 CU) — so verification resources, not just transport, limit it.
+A second implementation (RustCrypto `ml-dsa`) behaves the same way. Scope: one
+toolchain, one local validator; host timings are never converted into compute
+units; no universal infeasibility is claimed.
 
 ## Reproduce
 
@@ -71,10 +73,12 @@ and a correctly-signed wrong-network request. `scripts/demo.sh` runs this plus
 - `docs/report.md` — the research report (finding, methodology, generated
   results tables, security argument, limitations).
 - `docs/encoding.md`, `docs/threat-model.md`, `docs/methodology.md`,
-  `docs/transport.md`, `docs/solana-feasibility.md`, `docs/progress.md`,
-  `docs/ai-usage.md`, `docs/demo-outline.md`, `docs/interview-qa.md`.
+  `docs/transport.md`, `docs/solana-feasibility.md`, `docs/technical-note.md`,
+  `docs/progress.md`, `docs/ai-usage.md`, `docs/demo-outline.md`,
+  `docs/interview-qa.md`.
 - `idea.md` / `plan.md` — project definition and milestone plan.
 - `results/provenance.md` — what produced each artifact, and what is superseded.
+- `experiments/outcome/` — sBPF build/loader/execution evidence.
 
 ## Design summary
 
@@ -115,8 +119,11 @@ progression for accepts and a separate replay-rejection workload). See
   not modeled.
 - v1 bytes are produced by the SDK's encoder/decoder only; no validator
   accepted or executed them.
-- The sBPF blocker is `fips204` 0.4.6-specific; a heap-allocating verifier may
-  differ.
+- The sBPF result is a runtime access violation (no verdict) for two library
+  builds under one toolchain and one local validator; a heap-allocating verifier
+  may differ.
+- The oversized sBPF fixture travels through account data; this validator's RPC
+  enforces the 1,232-byte packet limit, so no v1 transaction was executed.
 - Replay state is in-memory only; production persistence is future work.
 
 ## Attribution

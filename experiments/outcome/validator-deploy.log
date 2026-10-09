@@ -1,0 +1,29 @@
+# solana-test-validator local deploy attempt
+# date: 2026-10-09T10:50:27Z
+# validator: 3.1.10
+# payer: HgGFxEwyHEhUJzbZPZ9MowLr4z5iwkYv66Q29LX4YxKL
+
+$ solana airdrop 100 HgGFxEwyHEhUJzbZPZ9MowLr4z5iwkYv66Q29LX4YxKL
+Requesting airdrop of 100 SOL
+
+Signature: 5Em1MGgjCKq6SifXVMfMWvh1naPaQqxiHDtZUfsnUZJE4wMCBGt5wNZjvkRAdom4WTKcVHVeuaCjhCfZxAJWqBNj
+
+100 SOL
+
+$ ls experiments/*/target/deploy/*-keypair.json
+experiments/sbpf-control/target/deploy/sbpf_control-keypair.json
+experiments/sbpf-verifier/target/deploy/sbpf_verifier-keypair.json
+
+$ solana program deploy --program-id sbpf_control-keypair.json sbpf_control.so
+Program Id: 8rgtPTezeDn6ZJtdeDCKhKiRL9pq92hNXxK2kmPEvoj6
+
+Signature: 3yifxQU6HJA1kg5gzaA2PwNUNuJyhLWrSYWHZ7RtHsQbjtLxkTdZrrZhUh5terNKGS2kGrp5AbfuTkaBsFghuQrx
+
+control deploy exit=0
+
+$ solana program deploy --program-id sbpf_verifier-keypair.json sbpf_verifier.so
+Program Id: 8CgWp1LbNhAhx8Rwt5Haxby5VyhaS7Z6hTxsqc7xH4Qp
+
+Signature: 3Y8Rxyt1wYUgeJZtYEWvghZE7MKiQoEGe4Na3GaXYkR1iPkvD3VBvZBzEnEKVAWckFawfEBHn2cHK1Z9Vg9GAHji
+
+verifier deploy exit=0

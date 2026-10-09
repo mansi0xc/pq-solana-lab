@@ -1,0 +1,27 @@
+genuine fixture: pk=1312 sig=2420 msg=51 (host verification: OK)
+wrote valid.bin (3783 B), altered_message.bin (3783 B), invalid_signature.bin (3783 B)
+
+== control (sbpf-control.so) ==
+elf: ../sbpf-control/target/deploy/sbpf_control.so (17320 bytes)
+load:   OK (sbpf_version=V0)
+verify: OK (RequisiteVerifier)
+execute: not attempted by this harness (program-runtime ABI out of scope)
+
+== verifier (sbpf_verifier.so, fips204 0.4.6) ==
+elf: ../sbpf-verifier/target/deploy/sbpf_verifier.so (73280 bytes)
+load:   OK (sbpf_version=V0)
+verify: OK (RequisiteVerifier)
+execute: not attempted by this harness (program-runtime ABI out of scope)
+
+== loader harness: all three ELFs ==
+== fips204 verifier ==
+elf: ../sbpf-verifier/target/deploy/sbpf_verifier.so (80624 bytes)
+load:   OK (sbpf_version=V0)
+verify: OK (RequisiteVerifier)
+execute: not attempted by this harness (program-runtime ABI out of scope)
+
+== rustcrypto ml-dsa verifier ==
+elf: ../sbpf-verifier-rustcrypto/target/deploy/sbpf_verifier_rustcrypto.so (90784 bytes)
+load:   OK (sbpf_version=V0)
+verify: OK (RequisiteVerifier)
+execute: not attempted by this harness (program-runtime ABI out of scope)
