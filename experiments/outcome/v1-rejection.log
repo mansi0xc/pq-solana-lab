@@ -1,0 +1,26 @@
+# v1 transaction submission probe
+# date: 2026-10-09T19:04:45Z
+# runtime: solana-test-validator 3.1.10
+# feature enable_tx_v1 present in agave-feature-set 4.2.x but NOT in 3.1.14
+
+--- small v1 tx (32-byte instruction data) (v1/wincode) ---
+build : transaction: 206 bytes (v1/wincode), instruction data 32 bytes, accounts 0
+send  : {"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"},"id":null} send  : {"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"},"id":null} send  : {"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"},"id":null} send  : {"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"},"id":null} send  : {"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"},"id":null}
+
+--- large v1 tx (3783-byte instruction data) (v1/wincode) ---
+build : transaction: 3957 bytes (v1/wincode), instruction data 3783 bytes, accounts 0
+send  : {"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"},"id":null} send  : {"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"},"id":null} send  : {"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"},"id":null} send  : {"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"},"id":null} send  : {"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"},"id":null}
+
+# v1 transaction submission probe
+# date: 2026-10-09T19:05:44Z
+# runtime: solana-test-validator 3.1.10
+# feature enable_tx_v1 present in agave-feature-set 4.2.x, absent from 3.1.14
+
+--- small v1 tx (32-byte instruction data) (v1/wincode) ---
+build : transaction: 206 bytes (v1/wincode), instruction data 32 bytes, accounts 0
+send  : {"jsonrpc":"2.0","error":{"code":-32602,"message":"failed to deserialize solana_transaction::versioned::VersionedTransaction: io error: failed to fill whole buffer"},"id":1}
+
+--- large v1 tx (3783-byte instruction data) (v1/wincode) ---
+build : transaction: 3957 bytes (v1/wincode), instruction data 3783 bytes, accounts 0
+send  : {"jsonrpc":"2.0","error":{"code":-32602,"message":"base64 encoded solana_transaction::versioned::VersionedTransaction too large: 5276 bytes (max: encoded/raw 1644/1232)"},"id":1}
+

@@ -578,6 +578,7 @@ dependencies = [
  "bincode",
  "serde_json",
  "solana-sdk",
+ "wincode",
 ]
 
 [[package]]

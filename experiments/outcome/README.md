@@ -19,6 +19,7 @@ verdict.
 | --- | --- |
 | `validator-deploy.log` | `solana program deploy` of both programs against a local validator (exit 0) |
 | `execution.log` | real transactions via JSON-RPC: control program success; `fips204` and RustCrypto verifier runtime traps |
+| `v1-rejection.log`, `probe-v1.sh` | v1 transaction submission probe: both RPC rejections recorded |
 | `validator.log` | `solana-test-validator` stdout (quiet) |
 | `invoke.sh` | the exact invocation script (builds a legacy tx, submits with curl, prints err/CU/logs) |
 
@@ -65,6 +66,24 @@ invalid-signature all fail identically** and no completed-verification compute
 measurement exists. The `unitsConsumed` field reports the full limit (200,000)
 when the program aborts, while the program log reports the pre-trap count
 (418 / 323); both are recorded rather than reconciled.
+
+## v1 submission probe
+
+Agave 3.1.x has no v1 transaction support: the `enable_tx_v1` feature
+("SIMD-0385: Transaction V1") is defined in `agave-feature-set` 4.2.x but is
+absent from `agave-feature-set` 3.1.14 (the version matching the 3.1.10
+validator). `probe-v1.sh` submits both a small and a large v1 transaction and
+records the exact rejections (`v1-rejection.log`):
+
+| v1 tx | RPC response |
+| --- | --- |
+| small (206 B) | `-32602 failed to deserialize ... VersionedTransaction: io error: failed to fill whole buffer` |
+| large (3,957 B) | `-32602 base64 encoded ... too large: 5276 bytes (max: encoded/raw 1644/1232)` |
+
+The first is the RPC decoding the bytes as bincode/serde (the v1 `0x81` prefix is
+read as a 129-entry signature array); the second is the 1,232-byte packet limit
+on the base64 string. So the project's v1 sizes are **serialization** evidence
+only; no v1 transaction was accepted or executed. See `docs/transport.md`.
 
 ## What this establishes, and what it does not
 

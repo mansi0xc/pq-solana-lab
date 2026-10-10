@@ -13,7 +13,8 @@
 | M7: Release | Complete; **revised in correction batch 1** | README; CI; short demo + separate benchmark pilot; demo outline; interview Q&A |
 | Correction batch 1 (reviewer findings on `71b171f`) | Complete (committed `dd9d971`) | v1 wire encoding fixed; staged protocol defined; report statistics regenerated; security wording corrected |
 | Correction batch 2 (benchmarking) | Complete (committed `05389df`) | `black_box` + result validation; four measurement boundaries; provenance capture; three independent full runs (`full-r1`–`full-r3`) |
-| Correction batch 3 (sBPF outcome, comparison, note) | Complete (pending author review/commit) | control program executes; verifiers load/verify/deploy then **trap at runtime**; RustCrypto comparison; `docs/technical-note.md` |
+| Correction batch 3 (sBPF outcome, comparison, note) | Complete (committed `b95de43`) | control program executes; verifiers load/verify/deploy then **trap at runtime**; RustCrypto comparison; `docs/technical-note.md` |
+| Correction batch 4 (v1 submission scope) | Complete (pending author review/commit) | v1 rejection reproduced and explained: `enable_tx_v1` absent from the Agave 3.1.x feature set |
 
 Counts in the historical sections below describe the state at each milestone;
 the current suite is **78 tests** (`cargo test --release --locked`, all green).
@@ -468,6 +469,24 @@ clippy --release --all-targets --locked -- -D warnings`; `cargo test --release
 --locked` (78 tests); `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --locked`;
 `python3 scripts/report_tables.py check`; `git diff --check`.
 
+## Correction batch 4 — v1 submission scope
+
+The Batch-3 commit message flagged that v1 transactions were rejected by the
+local validator. Investigated and resolved as a runtime-support fact, not a
+defect in the transport analysis:
+
+- `enable_tx_v1` ("SIMD-0385: Transaction V1") is defined in
+  `agave-feature-set` 4.2.x but is **absent from `agave-feature-set` 3.1.14**
+  (matching the 3.1.10 validator), so the 3.1.x runtime has no v1 support.
+- Reproduced both rejection modes with `experiments/outcome/probe-v1.sh`
+  (`experiments/outcome/v1-rejection.log`): a small v1 tx fails to deserialize
+  (the RPC decodes bincode/serde; the v1 `0x81` prefix reads as 129
+  signatures), and a large v1 tx exceeds the 1,232-byte packet limit.
+- Documented in `docs/transport.md` (new section), `docs/report.md`
+  (limitations), and `experiments/outcome/README.md`. The v1 tables remain
+  `serialized` evidence; the execution experiment used legacy transactions with
+  the fixture in account data.
+
 ## Next action
 
-Correction batches 1–3 are complete and await the author's review and commit.
+Correction batches 1–4 are complete and await the author's review and commit.

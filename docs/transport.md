@@ -121,6 +121,33 @@ makes each transaction fit (legacy/v0 chunk ~957 B, v1 ~3,809 B) but increases
 total transported bytes and adds on-chain state; it does not reduce verification
 cost. A size result is a transport measurement, not an executed authorization.
 
+## v1 submission is not supported by the tested runtime
+
+The v1 numbers above are **serialization** results. They were not, and cannot
+be, submitted to the runtime used for the execution experiment: the Agave 3.1.x
+runtime has no v1 support. The `enable_tx_v1` feature ("SIMD-0385: Transaction
+V1") is defined in `agave-feature-set` 4.2.x but is **absent from
+`agave-feature-set` 3.1.14** (the version matching the 3.1.10 validator), so the
+3.1.x RPC neither parses the v1 wire format nor allows a v1-sized packet.
+
+`experiments/outcome/probe-v1.sh` records both rejection modes against a local
+`solana-test-validator` 3.1.10 (`experiments/outcome/v1-rejection.log`):
+
+| v1 tx | RPC response |
+| --- | --- |
+| small (206 B, 32-byte data) | `-32602 failed to deserialize ... VersionedTransaction: io error: failed to fill whole buffer` |
+| large (3,957 B, 3,783-byte data) | `-32602 base64 encoded ... too large: 5276 bytes (max: encoded/raw 1644/1232)` |
+
+The first is the RPC decoding the submitted bytes as bincode/serde: the v1 wire
+form starts with `0x81`, which bincode reads as a 129-entry signature array.
+The second is the 1,232-byte packet limit applied to the base64 string
+(3,957 × 4/3 = 5,276; the encoded maximum is 1,644 = ⌈1,232 × 4/3⌉). Legacy/v0
+transactions are unaffected and are what the execution experiment used.
+
+**Conclusion:** "v1 admits ML-DSA-44" is a claim about the *wire format*, with
+evidence type `serialized`. On this runtime the format is not submittable at
+all, so no v1 transaction was accepted or executed on chain.
+
 ## Assumptions
 
 - **Fee payment** is a separate, classical Ed25519 concern; the fee payer is a

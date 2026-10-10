@@ -347,16 +347,17 @@ rejected while state is left unchanged on rejection — nothing more.
 - SLH-DSA uses reduced sample counts; sub-resolution timings are reported as ~0.
 - Staged upload is a model (component transactions serialized, lifecycle not
   executed); registration, account rent, cleanup, and compute are excluded.
-- The v1 `wincode` encoding is exercised only through the SDK's own encoder and
-  decoder; no validator accepted or executed these transactions.
 - The sBPF result is a runtime access violation before any verdict, for two
   library builds under one toolchain and one local validator. A heap-allocating
   verifier might differ. No universal infeasibility, and no completed-verification
   compute figure, is claimed.
-- The local-validator harness supplies the oversized fixture through account
-  data because the RPC enforces the 1,232-byte packet limit; v1 transactions
-  were not accepted by this validator's RPC, so no v1 transaction was executed
-  on chain.
+- The v1 `wincode` encoding is exercised only through the SDK's own encoder and
+  decoder. The tested runtime (Agave 3.1.10) has no v1 support — the
+  `enable_tx_v1` feature ("SIMD-0385") is absent from its feature set — so the
+  RPC rejects the v1 wire format (bincode-decode failure) and v1-sized packets
+  (1,232-byte limit). No v1 transaction was accepted or executed on chain; the
+  execution experiment used legacy transactions with the oversized fixture in
+  account data. See `docs/transport.md` and `experiments/outcome/v1-rejection.log`.
 - ML-DSA-65 and SLH-DSA lack independent conformance checks (only ML-DSA-44 has
   the cross-implementation interop test).
 - The threshold-paper claim is cited from its abstract; a specific numbered
